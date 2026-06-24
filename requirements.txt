@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dépendances ÉPINGLÉES (versions exactes, jamais >=).
+#
+# ⚠️  Cible : Raspberry Pi Zero W v1 (ARMv6) + Raspberry Pi OS, via piwheels.
+#     AVANT de figer une version : vérifier qu'une wheel ARMv6 existe sur
+#     https://www.piwheels.org/project/<paquet>/  (onglet « armv6l »).
+#     En particulier `cryptography` : les dernières versions n'ont pas
+#     forcément de wheel ARMv6 et tomberaient sur une compilation Rust
+#     (très longue / risque d'échec sur la carte).
+#
+#     Ces versions sont un POINT DE DÉPART validé fonctionnellement ; elles
+#     DOIVENT être re-vérifiées sur une carte fraîchement flashée (cf. README).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- HomeKit (accessoire natif) ---
+HAP-python==4.9.1
+# QR code d'appairage dans la console (extra [QRCode] de HAP-python)
+pyqrcode==1.2.1
+base36==0.1.1
+
+# HAP-python tire cryptography ; on l'épingle explicitement pour maîtriser
+# la disponibilité de la wheel ARMv6.
+cryptography==42.0.8
+
+# --- Source de données Overkiz / Cozytouch ---
+pyoverkiz==1.13.14
+
+# --- Config & UX console ---
+PyYAML==6.0.1
+questionary==2.0.1
+rich==13.7.1

@@ -1,0 +1,114 @@
+"""Chargement / sauvegarde de la configuration (config.yaml)."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+# Racine du projet (dossier parent du package).
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = Path(os.environ.get("COZYTOUCH_CONFIG", PROJECT_ROOT / "config.yaml"))
+
+# Liste canonique des features, dans un ORDRE STABLE.
+# Cet ordre détermine l'ordre d'ajout des services HAP donc la stabilité
+# des IID entre redémarrages : ne jamais le réordonner.
+FEATURE_ORDER = [
+    "temp_ambiante",
+    "temp_exterieure",
+    "temp_ecs",
+    "thermostat",
+    "boost_ecs",
+]
+
+# Features réellement implémentées en V1 (lecture seule).
+IMPLEMENTED_FEATURES = {"temp_ambiante", "temp_exterieure", "temp_ecs"}
+
+DEFAULT_CONFIG: dict[str, Any] = {
+    "cozytouch": {
+        "username": "",
+        "password": "",
+        "server": "atlantic_cozytouch",
+    },
+    "device": {
+        "pac_url": "",
+        "ecs_url": "",
+    },
+    "sensors": {
+        "temp_ambiante": {"device": "pac", "state": "core:TemperatureState"},
+        "temp_exterieure": {"device": "pac", "state": "core:OutsideTemperatureState"},
+        "temp_ecs": {"device": "ecs", "state": "core:TemperatureState"},
+    },
+    "features": {
+        "temp_ambiante": True,
+        "temp_exterieure": True,
+        "temp_ecs": False,
+        "thermostat": False,
+        "boost_ecs": False,
+    },
+    "homekit": {
+        "name": "PAC Atlantic",
+        "port": 51826,
+        "persist_file": "accessory.state",
+    },
+    "polling": {
+        "interval": 45,
+        "backoff_base": 30,
+        "backoff_max": 600,
+    },
+}
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Fusion récursive : `override` complète/écrase `base` sans le muter."""
+    result = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def load_config(path: Path | None = None) -> dict[str, Any]:
+    """Charge config.yaml fusionné sur les défauts. Erreur si absent."""
+    path = path or CONFIG_PATH
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Configuration introuvable : {path}\n"
+            "Lancez d'abord :  python -m cozytouch_homekit configure"
+        )
+    with path.open("r", encoding="utf-8") as fh:
+        user_cfg = yaml.safe_load(fh) or {}
+    return _deep_merge(DEFAULT_CONFIG, user_cfg)
+
+
+def save_config(cfg: dict[str, Any], path: Path | None = None) -> Path:
+    """Écrit config.yaml (droits 0600, contient des secrets)."""
+    path = path or CONFIG_PATH
+    with path.open("w", encoding="utf-8") as fh:
+        yaml.safe_dump(cfg, fh, allow_unicode=True, sort_keys=False)
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass  # systèmes de fichiers sans support des permissions POSIX
+    return path
+
+
+def resolve_persist_path(cfg: dict[str, Any]) -> Path:
+    """Chemin absolu du fichier d'état HAP."""
+    persist = cfg["homekit"]["persist_file"]
+    p = Path(persist)
+    return p if p.is_absolute() else PROJECT_ROOT / p
+
+
+def enabled_features(cfg: dict[str, Any]) -> list[str]:
+    """Features activées ET implémentées, dans l'ordre canonique stable."""
+    feats = cfg.get("features", {})
+    return [
+        name
+        for name in FEATURE_ORDER
+        if feats.get(name) and name in IMPLEMENTED_FEATURES
+    ]
