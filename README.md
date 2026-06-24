@@ -127,7 +127,12 @@ Un flag `false` ⇒ service **absent** de l'accessoire ⇒ **aucune tuile** dans
 ## Matériel testé & ARMv6
 
 - Cible : **Raspberry Pi Zero W v1** (ARMv6, 1 GHz, 512 Mo) + **Raspberry Pi
-  OS** (Bookworm). Raspberry Pi OS est requis pour que **piwheels** soit actif.
+  OS**. Raspberry Pi OS est requis pour que **piwheels** soit actif.
+  - **Bookworm** → Python 3.11 (wheels `cp311`)
+  - **Trixie** → Python 3.13 (wheels `cp313`)
+  - ⚠️ Les wheels piwheels sont taguées par version de Python : sur Trixie, une
+    version épinglée qui n'a qu'une wheel `cp311` retombera sur une compilation
+    depuis les sources. Vérifier la dispo `cp313`/`armv6l` sur piwheels.
 - **piwheels** fournit des wheels précompilées ARMv6 → `pip` récupère des
   binaires au lieu de compiler `cryptography` & co depuis les sources.
 - ⚠️ **Appairage lent** : le handshake crypto sur single-core ARMv6 peut
