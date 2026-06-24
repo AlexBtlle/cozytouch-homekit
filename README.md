@@ -1,8 +1,9 @@
 # cozytouch-homekit
 
 Exposer une PAC **Atlantic Alféa Extensa AI Duo** (ou autre appareil Atlantic
-piloté par **Cozytouch**) dans **Apple HomeKit** comme **accessoire natif**
-(pas un bridge), en local, sur un **Raspberry Pi Zero W**.
+piloté par **Cozytouch**) dans **Apple HomeKit**, en local, sur un
+**Raspberry Pi Zero W**, via un **bridge HAP** (un accessoire par fonction,
+chacun rangeable dans sa propre pièce).
 
 Les données sont lues depuis l'API cloud **Overkiz / Cozytouch** via
 [`pyoverkiz`](https://github.com/iMicknl/python-overkiz-api) et publiées en
@@ -33,17 +34,24 @@ journalctl -u cozytouch-homekit -f
 
 ---
 
-## Architecture : accessoire **standalone**, pas un bridge
+## Architecture : **bridge** (un accessoire par fonction)
 
-- La PAC = **1 appareil physique = 1 accessoire HAP = N services**.
-- L'accessoire (`CozytouchAccessory`) hérite de `Accessory` (**pas** `Bridge`)
-  et ajoute ses services via `add_preload_service`.
-- Dans l'app Maison : chaque capteur = sa propre tuile, regroupées sous
-  l'appareil « PAC Atlantic », **un seul appairage**, aucun pont parent.
-- **AID/IID stables entre redémarrages** : l'AID d'un accessoire standalone
-  vaut `1`, et les services sont ajoutés dans un **ordre canonique fixe**
-  (`config.FEATURE_ORDER`) → les IID ne bougent pas tant que la liste des
-  services activés ne change pas.
+- La PAC = **1 appareil physique** dont chaque fonction (capteur ambiant,
+  capteur extérieur, ECS, thermostat…) est exposée comme un **accessoire HAP
+  distinct**, hébergé par un **bridge** (`CozytouchBridge`, hérite de `Bridge`).
+- **Pourquoi un bridge** (et plus un accessoire standalone) : dans HomeKit,
+  l'affectation à une **pièce** se fait par accessoire, pas par service. Comme
+  les sondes sont physiquement à des endroits différents (intérieur / extérieur
+  / ballon), il faut des accessoires séparés pour les ranger dans des pièces
+  différentes. C'est exactement le rôle d'un bridge : un seul appairage, N
+  accessoires indépendants.
+- **AID stables entre redémarrages** : le bridge = AID `1` ; chaque accessoire
+  enfant reçoit un AID **déterministe** dérivé de sa position dans
+  `config.FEATURE_ORDER` (`feature_aid()`), stable même si on active/désactive
+  des fonctions. Les IID sont stables au sein de chaque accessoire enfant.
+- **Ajouter une fonction** après coup : nouvel accessoire = nouvelle tuile, sans
+  ré-appairage. **Retirer** une fonction déjà appairée peut laisser une tuile
+  fantôme (cf. plus bas).
 
 ---
 
@@ -192,11 +200,13 @@ Cozytouch, clés d'appairage HAP et/ou l'ID de votre passerelle.
 
 ## Feuille de route
 
-- **V1 (actuel)** : install reproductible + `configure` + accessoire standalone
-  (capteurs ambiante / extérieure / ECS) + QR code + polling espacé + systemd.
+- **V1** : install reproductible + `configure` + capteurs de température +
+  QR code + polling espacé + systemd. ✅ Validé Pi Zero W v1 / Trixie.
+- **V1.5 (actuel)** : passage en **bridge** (un accessoire par fonction →
+  rangeable par pièce).
 - **V2** : écriture — `Thermostat`/`HeaterCooler` (consigne + mode), `Switch`
-  boost ECS. ⚠️ HomeKit n'a pas de type « PAC pilotée par loi d'eau » : mapping
-  à assumer et documenter.
+  boost ECS, sur la base du dump complet (states + commands). ⚠️ HomeKit n'a pas
+  de type « PAC pilotée par loi d'eau » : mapping à assumer et documenter.
 - **V3 (option)** : cache offline, healthcheck, procédure de nettoyage des
   tuiles fantômes.
 

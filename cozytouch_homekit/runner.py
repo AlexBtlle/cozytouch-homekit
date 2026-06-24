@@ -1,4 +1,4 @@
-"""Démarrage du service : AccessoryDriver + accessoire standalone + QR code.
+"""Démarrage du service : AccessoryDriver + bridge + QR code.
 
 Au 1er démarrage (non appairé), affiche le QR code d'appairage HAP dans la
 console (URI X-HM://, généré nativement par HAP-python).
@@ -12,7 +12,7 @@ import sys
 
 from pyhap.accessory_driver import AccessoryDriver
 
-from .accessory import CozytouchAccessory
+from .accessory import CozytouchBridge
 from .config import load_config, resolve_persist_path
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def _setup_logging() -> None:
     )
 
 
-def _print_pairing(accessory: CozytouchAccessory, driver: AccessoryDriver) -> None:
+def _print_pairing(accessory: CozytouchBridge, driver: AccessoryDriver) -> None:
     """Affiche le QR code / code d'appairage si l'accessoire n'est pas appairé."""
     if driver.state.paired:
         _LOGGER.info("Accessoire déjà appairé — pas de QR code à afficher.")
@@ -64,10 +64,10 @@ def main(argv: list[str] | None = None) -> int:
         persist_file=str(persist),
     )
 
-    accessory = CozytouchAccessory(driver, cfg)
-    driver.add_accessory(accessory=accessory)
+    bridge = CozytouchBridge(driver, cfg)
+    driver.add_accessory(accessory=bridge)
 
-    _print_pairing(accessory, driver)
+    _print_pairing(bridge, driver)
 
     # Arrêt propre sur SIGTERM (systemd) et SIGINT.
     signal.signal(signal.SIGTERM, driver.signal_handler)
