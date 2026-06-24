@@ -91,6 +91,20 @@ else
   python -m cozytouch_homekit configure
 fi
 
+# ── 4bis. Propriété des fichiers ─────────────────────────────────────────────
+# install.sh tourne sous sudo (root) ; le service systemd tourne en tant que
+# RUN_USER. Tout ce que root a créé (venv, config.yaml) doit appartenir à
+# RUN_USER, sinon le service ne peut ni lire config.yaml (0600 root) ni écrire
+# accessory.state dans le dossier.
+if [[ "${RUN_USER}" != "root" ]]; then
+  $SUDO chown -R "${RUN_USER}:${RUN_USER}" "${VENV_DIR}" 2>/dev/null || true
+  [[ -f "${PROJECT_DIR}/config.yaml" ]] && \
+    $SUDO chown "${RUN_USER}:${RUN_USER}" "${PROJECT_DIR}/config.yaml"
+  # Le dossier projet doit être inscriptible par RUN_USER (accessory.state).
+  $SUDO chown "${RUN_USER}:${RUN_USER}" "${PROJECT_DIR}" 2>/dev/null || true
+  info "Propriété des artefacts attribuée à ${RUN_USER}."
+fi
+
 # ── 5. Service systemd ───────────────────────────────────────────────────────
 bold "5) Service systemd"
 TMP_UNIT="$(mktemp)"
