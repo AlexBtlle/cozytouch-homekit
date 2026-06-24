@@ -113,8 +113,8 @@ Un flag `false` ⇒ service **absent** de l'accessoire ⇒ **aucune tuile** dans
 
 - **Cloud uniquement** : Cozytouch n'expose pas d'API locale → dépendance
   Internet assumée.
-- **Rate-limit Overkiz** : polling **espacé (45 s par défaut, 30–60 s
-  recommandé)**, **backoff exponentiel** sur erreur (plafond configurable),
+- **Rate-limit Overkiz** : polling **espacé (120 s par défaut ; 90–300 s
+  conseillé, 30 s minimum)**, **backoff exponentiel** sur erreur (plafond configurable),
   **refresh de session** automatique si le token expire.
 - Si l'API ne répond pas, les caractéristiques passent en **`StatusFault`**
   (indisponible) plutôt que de figer une valeur trompeuse.

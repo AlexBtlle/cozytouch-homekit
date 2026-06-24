@@ -58,7 +58,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "persist_file": "accessory.state",
     },
     "polling": {
-        "interval": 45,
+        "interval": 120,
         "backoff_base": 30,
         "backoff_max": 600,
     },

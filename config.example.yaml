@@ -61,6 +61,6 @@ homekit:
 
 # Polling : l'API Overkiz throttle → espacer + backoff.
 polling:
-  interval: 45        # secondes entre deux lectures (30–60 recommandé)
+  interval: 120       # secondes entre deux lectures (90–300 ok ; 30 minimum)
   backoff_base: 30    # délai initial de backoff sur erreur
   backoff_max: 600    # plafond du backoff exponentiel
