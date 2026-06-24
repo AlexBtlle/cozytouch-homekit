@@ -22,9 +22,14 @@ HAP-python==4.9.1
 pyqrcode==1.2.1
 base36==0.1.1
 
-# HAP-python tire cryptography ; on l'épingle explicitement pour maîtriser
-# la disponibilité de la wheel ARMv6.
-cryptography==42.0.8
+# ⚠️ cryptography N'EST PAS épinglé ici, et c'est VOULU.
+#    Sur ARMv6 (Pi Zero), cryptography est un paquet Rust et piwheels ne
+#    fournit AUCUNE wheel armv6 → pip tenterait de compiler du Rust
+#    (« can't find Rust compiler », des heures, OOM sur 512 Mo).
+#    Solution : on l'installe via apt (python3-cryptography, précompilé par
+#    Debian) et le venv le voit grâce à --system-site-packages (cf. install.sh).
+#    HAP-python (et chacha20poly1305-reuseable) acceptent la version système.
+#    zeroconf suit la même logique (python3-zeroconf via apt).
 
 # --- Source de données Overkiz / Cozytouch ---
 pyoverkiz==1.13.14

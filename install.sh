@@ -38,18 +38,34 @@ bold "1) Dépendances système (apt)"
 SUDO=""
 if [[ "$(id -u)" -ne 0 ]]; then SUDO="sudo"; fi
 $SUDO apt-get update
+# python3-cryptography / python3-zeroconf : fournis PRÉCOMPILÉS par Debian
+#   (Rust/C déjà compilés côté serveur). Indispensable sur ARMv6 où piwheels
+#   n'a PAS de wheel pour cryptography (paquet Rust) ni pour les dernières
+#   versions de zeroconf. On les rend visibles au venv via --system-site-packages
+#   (étape 2) au lieu de les recompiler sur la carte (Rust = des heures + OOM).
 $SUDO apt-get install -y \
   python3 python3-venv python3-pip python3-dev \
   build-essential libffi-dev \
-  libavahi-compat-libdnssd-dev
+  libavahi-compat-libdnssd-dev \
+  python3-cryptography python3-zeroconf
 
 # ── 2. Environnement virtuel ─────────────────────────────────────────────────
 bold "2) Environnement virtuel Python"
+# Le venv DOIT voir les paquets système (cryptography, zeroconf) → flag
+# --system-site-packages, qui ne peut être posé qu'à la CRÉATION du venv.
+needs_recreate=0
 if [[ ! -d "${VENV_DIR}" ]]; then
-  python3 -m venv "${VENV_DIR}"
-  info "venv créé : ${VENV_DIR}"
+  needs_recreate=1
+elif ! grep -q '^include-system-site-packages = true' "${VENV_DIR}/pyvenv.cfg" 2>/dev/null; then
+  warn "venv existant sans accès aux paquets système → recréation."
+  rm -rf "${VENV_DIR}"
+  needs_recreate=1
+fi
+if [[ "${needs_recreate}" -eq 1 ]]; then
+  python3 -m venv --system-site-packages "${VENV_DIR}"
+  info "venv créé (--system-site-packages) : ${VENV_DIR}"
 else
-  info "venv déjà présent : ${VENV_DIR}"
+  info "venv déjà présent (avec paquets système) : ${VENV_DIR}"
 fi
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"

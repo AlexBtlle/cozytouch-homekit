@@ -134,21 +134,38 @@ Un flag `false` ⇒ service **absent** de l'accessoire ⇒ **aucune tuile** dans
     version épinglée qui n'a qu'une wheel `cp311` retombera sur une compilation
     depuis les sources. Vérifier la dispo `cp313`/`armv6l` sur piwheels.
 - **piwheels** fournit des wheels précompilées ARMv6 → `pip` récupère des
-  binaires au lieu de compiler `cryptography` & co depuis les sources.
+  binaires au lieu de compiler la plupart des paquets depuis les sources.
 - ⚠️ **Appairage lent** : le handshake crypto sur single-core ARMv6 peut
   prendre **plusieurs minutes**. Ce n'est pas un plantage — laissez tourner.
 
-### Reproductibilité de l'install — le vrai enjeu
+### ⚠️ `cryptography` sur ARMv6 : via apt, pas via pip
 
-`requirements.txt` est **épinglé** (`==`). Avant de figer une version, on
-vérifie qu'une **wheel ARMv6 existe sur piwheels** (surtout `cryptography`,
-dont les dernières versions n'ont pas forcément de wheel ARMv6 et tomberaient
-sur une compilation Rust).
+C'est **le** point dur de l'install, et il n'y a pas de wheel pip miracle :
 
-> Les versions de `requirements.txt` sont un **point de départ** validé
-> fonctionnellement (API HAP-python + pyoverkiz vérifiées). Elles **doivent
-> être re-testées sur une carte fraîchement flashée** avant publication : page
-> piwheels `https://www.piwheels.org/project/<paquet>/`, onglet `armv6l`.
+- `cryptography ≥ 3.5` est un paquet **Rust**. **piwheels ne build pas de
+  wheel Rust pour armv6** → `pip install cryptography` retombe sur une
+  compilation depuis les sources → `error: can't find Rust compiler` (et même
+  avec Rust : des heures de compilation + risque d'OOM sur 512 Mo).
+- Les versions pré-Rust (`≤ 3.4.8`) n'ont pas de wheel `cp313` et ne tournent
+  pas sous Python 3.13. **Aucune version de `cryptography` n'est donc
+  pip-installable sur Pi Zero + Trixie.**
+
+**Solution (gérée par `install.sh`)** : installer `cryptography` depuis
+**Debian** (`apt install python3-cryptography`, précompilé par Debian, Rust
+inclus) et créer le venv avec **`--system-site-packages`** pour qu'il le voie.
+Idem pour `zeroconf` (`python3-zeroconf`). `cryptography` est donc
+**volontairement absent** de `requirements.txt`.
+
+### Reproductibilité de l'install
+
+`requirements.txt` est **épinglé** (`==`) pour les paquets pip. Les paquets à
+composants natifs lourds (`cryptography`, `zeroconf`) viennent d'**apt** et
+suivent la version de Debian Trixie. Tout le reste récupère des wheels
+`cp313`/`armv6l` sur piwheels.
+
+> Validé sur **Pi Zero W v1 / Raspberry Pi OS Trixie (Python 3.13)** : toutes
+> les deps pip se posent en wheels, `cryptography`/`zeroconf` viennent d'apt,
+> aucune compilation sur la carte.
 
 ---
 
