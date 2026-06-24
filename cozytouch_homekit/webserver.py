@@ -126,25 +126,31 @@ def render_html(bridge: Any, cfg: dict[str, Any]) -> str:
     name = html.escape(cfg["homekit"]["name"])
     paired = bool(getattr(getattr(bridge, "driver", None), "state", None) and bridge.driver.state.paired)
 
-    # Carte HomeKit.
+    # Carte HomeKit : on affiche TOUJOURS le QR + PIN (référence : projet caméra),
+    # avec le badge d'état d'appairage.
+    pin = "—"
+    try:
+        pin = bridge.driver.state.pincode.decode()
+    except Exception:  # noqa: BLE001
+        pass
+    qr = ""
+    try:
+        qr = _qr_svg(bridge.xhm_uri()) or ""
+    except Exception:  # noqa: BLE001
+        pass
     if paired:
-        homekit_block = '<p class="ok">✓ Appairé</p>'
-    else:
-        pin = "—"
-        try:
-            pin = bridge.driver.state.pincode.decode()
-        except Exception:  # noqa: BLE001
-            pass
-        qr = ""
-        try:
-            qr = _qr_svg(bridge.xhm_uri()) or ""
-        except Exception:  # noqa: BLE001
-            pass
-        homekit_block = (
-            '<p class="warn">Non appairé — scannez le QR dans l\'app Maison</p>'
-            f'<div class="qr">{qr}</div>'
-            f'<p>Code PIN : <code>{html.escape(pin)}</code></p>'
+        status_line = (
+            '<p class="ok">✓ Appairé</p>'
+            '<p class="muted">Pour ré-appairer : retirez l\'accessoire dans Maison, '
+            'puis re-scannez.</p>'
         )
+    else:
+        status_line = '<p class="warn">Non appairé — scannez le QR dans l\'app Maison</p>'
+    homekit_block = (
+        status_line
+        + f'<div class="qr">{qr}</div>'
+        + f'<p>Code PIN : <code>{html.escape(pin)}</code></p>'
+    )
 
     # Carte Overkiz.
     connected = getattr(bridge, "connected", False)
@@ -193,6 +199,7 @@ def render_html(bridge: Any, cfg: dict[str, Any]) -> str:
  td:first-child {{ color:#666; white-space:nowrap; }}
  .ok {{ color:#1a7f37; font-weight:600; }}
  .warn {{ color:#b35900; font-weight:600; }}
+ .muted {{ color:#888; font-size:.8rem; }}
  code {{ background:#eef; padding:.1rem .4rem; border-radius:6px; font-size:1.1rem; }}
  .qr {{ max-width:220px; }} .qr svg {{ width:100%; height:auto; }}
  footer {{ color:#888; font-size:.75rem; margin-top:1rem; }}
