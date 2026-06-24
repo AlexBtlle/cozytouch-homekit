@@ -4,6 +4,10 @@
 # ⚠️  Cible : Raspberry Pi Zero W v1 (ARMv6) + Raspberry Pi OS, via piwheels.
 #     AVANT de figer une version : vérifier qu'une wheel ARMv6 existe sur
 #     https://www.piwheels.org/project/<paquet>/  (onglet « armv6l »).
+#     ⚠️ La wheel est aussi taguée par version de Python :
+#        - Raspberry Pi OS Bookworm → Python 3.11 (cp311)
+#        - Raspberry Pi OS Trixie   → Python 3.13 (cp313)
+#     Sur Trixie/Python 3.13, certaines versions n'ont de wheel que pour 3.11.
 #     En particulier `cryptography` : les dernières versions n'ont pas
 #     forcément de wheel ARMv6 et tomberaient sur une compilation Rust
 #     (très longue / risque d'échec sur la carte).
@@ -26,6 +30,8 @@ cryptography==42.0.8
 pyoverkiz==1.13.14
 
 # --- Config & UX console ---
-PyYAML==6.0.1
+# PyYAML 6.0.1 NE COMPILE PAS sous Python 3.13 (Trixie) — bug Cython.
+# 6.0.2 a les wheels cp313. Garder >= 6.0.2 sur Trixie.
+PyYAML==6.0.2
 questionary==2.0.1
 rich==13.7.1
