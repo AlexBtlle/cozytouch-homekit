@@ -62,7 +62,29 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "backoff_base": 30,
         "backoff_max": 600,
     },
+    # Liste des capacités exposées à HomeKit, détectées et choisies via
+    # `configure` (un accessoire par entrée). Chaque entrée :
+    #   {aid, type, name, device_url, state}
+    # Si vide, le bridge retombe sur le mode legacy (features/sensors).
+    "exposed": [],
 }
+
+
+def assign_aids(exposed: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Garantit un AID stable et unique (>= 2) par entrée exposée.
+
+    Conserve les AID déjà attribués ; les nouvelles entrées reçoivent le plus
+    petit AID libre. Mute et renvoie la liste.
+    """
+    used = {e["aid"] for e in exposed if isinstance(e.get("aid"), int)}
+    next_aid = 2
+    for entry in exposed:
+        if not isinstance(entry.get("aid"), int):
+            while next_aid in used:
+                next_aid += 1
+            entry["aid"] = next_aid
+            used.add(next_aid)
+    return exposed
 
 
 def _deep_merge(base: dict, override: dict) -> dict:

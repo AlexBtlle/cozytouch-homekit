@@ -1,16 +1,18 @@
-"""Bridge HAP pour la PAC Atlantic — un accessoire par fonction.
+"""Bridge HAP pour la PAC Atlantic — un accessoire par capacité exposée.
 
 Architecture : 1 **bridge** (`CozytouchBridge`) qui héberge N accessoires
-enfants, chacun exposant UNE fonction (un capteur de température, plus tard un
-thermostat, un boost ECS…). Contrairement à un accessoire standalone, chaque
-accessoire ponté est **assignable à sa propre pièce** dans l'app Maison.
+enfants, chacun exposant UNE capacité détectée (capteur de température,
+d'humidité, consigne…). Chaque accessoire ponté est **assignable à sa propre
+pièce** dans l'app Maison.
 
-- AID stables : le bridge = AID 1 ; chaque enfant reçoit un AID déterministe
-  dérivé de sa position dans `FEATURE_ORDER` (stable entre redémarrages, même
-  si on active/désactive des fonctions).
+Le bridge est piloté par la liste `exposed` de la config (détectée et choisie
+via `configure`). À défaut, repli legacy sur `features`/`sensors`.
+
+- AID stables : le bridge = AID 1 ; chaque enfant porte l'AID figé dans son
+  entrée `exposed` (cf. config.assign_aids).
 - Le polling Overkiz + backoff vivent dans `CozytouchBridge.run()` (même event
   loop que HAP-python). Le bridge lit les states une fois par device puis
-  pousse les valeurs à chaque accessoire enfant via `update()`.
+  pousse les valeurs à chaque accessoire via `update()`.
 """
 
 from __future__ import annotations
@@ -23,50 +25,89 @@ from pyhap.accessory import Accessory, Bridge
 from pyhap.const import CATEGORY_SENSOR
 
 from .config import FEATURE_ORDER, IMPLEMENTED_FEATURES
+from .detect import (
+    TYPE_HUMIDITY,
+    TYPE_TEMPERATURE,
+    TYPE_TEMPERATURE_SETPOINT,
+)
 from .overkiz_client import AuthError, CozytouchClient, TransientError
 
 _LOGGER = logging.getLogger(__name__)
 
-# Libellés des tuiles HomeKit.
+# Libellés legacy (mode features/sensors).
 SENSOR_NAMES = {
     "temp_ambiante": "Température ambiante",
     "temp_exterieure": "Température extérieure",
     "temp_ecs": "Température ECS",
 }
 
-# Bornes HomeKit pour CurrentTemperature (°C). Plage basse élargie pour les
-# températures extérieures négatives.
 TEMP_MIN = -50.0
 TEMP_MAX = 100.0
 
-# StatusFault : 0 = NO_FAULT, 1 = GENERAL_FAULT.
 FAULT_NONE = 0
 FAULT_GENERAL = 1
 
 
 def feature_aid(feature: str) -> int:
-    """AID déterministe et stable pour un accessoire enfant (>= 2)."""
+    """AID legacy déterministe pour une feature (>= 2)."""
     return 2 + FEATURE_ORDER.index(feature)
 
 
-class TemperatureSensorAccessory(Accessory):
-    """Accessoire enfant = un capteur de température (lecture seule)."""
+class _SensorAccessory(Accessory):
+    """Base : un accessoire enfant lisant un (device_url, state) Overkiz."""
 
     category = CATEGORY_SENSOR
 
-    def __init__(self, driver, feature: str, device_url: str, state_name: str):
-        super().__init__(driver, SENSOR_NAMES.get(feature, feature), aid=feature_aid(feature))
-        self.feature = feature
+    def __init__(self, driver, name: str, device_url: str, state_name: str, aid: int):
+        super().__init__(driver, name, aid=aid)
         self.device_url = device_url
         self.state_name = state_name
+        self._name = name
         self._warned_missing = False
 
         info = self.get_service("AccessoryInformation")
         info.configure_char("Manufacturer", value="Atlantic")
-        info.configure_char("Model", value="Alfea Extensa AI Duo")
-        info.configure_char("SerialNumber", value=f"cozytouch-{feature}")
+        info.configure_char("Model", value="Cozytouch")
+        info.configure_char("SerialNumber", value=f"cozytouch-{aid}")
         info.configure_char("FirmwareRevision", value="1.0.0")
 
+    @property
+    def device_urls(self) -> list[str]:
+        return [self.device_url]
+
+    # À implémenter par les sous-classes.
+    def _apply(self, value: Any) -> None:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def set_unavailable(self) -> None:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def update(self, states_by_url: dict[str, dict[str, Any]]) -> None:
+        states = states_by_url.get(self.device_url, {})
+        value = states.get(self.state_name)
+        if value is None:
+            if not self._warned_missing:
+                avail = sorted(states)
+                _LOGGER.warning(
+                    "State '%s' introuvable sur %s (accessoire '%s'). "
+                    "States disponibles : %s.",
+                    self.state_name, self.device_url, self._name,
+                    ", ".join(avail) or "(aucun)",
+                )
+                self._warned_missing = True
+            self.set_unavailable()
+            return
+        self._warned_missing = False
+        try:
+            self._apply(value)
+        except (TypeError, ValueError):
+            _LOGGER.warning("Valeur inattendue pour %s : %r", self._name, value)
+            self.set_unavailable()
+
+
+class TemperatureSensorAccessory(_SensorAccessory):
+    def __init__(self, driver, name, device_url, state_name, aid):
+        super().__init__(driver, name, device_url, state_name, aid)
         svc = self.add_preload_service(
             "TemperatureSensor", chars=["StatusActive", "StatusFault"]
         )
@@ -74,64 +115,65 @@ class TemperatureSensorAccessory(Accessory):
         self.char_temp.override_properties(
             properties={"minValue": TEMP_MIN, "maxValue": TEMP_MAX, "minStep": 0.1}
         )
-        self.char_fault = svc.get_characteristic("StatusFault")
         self.char_active = svc.get_characteristic("StatusActive")
-        self.set_unavailable()  # état initial tant qu'on n'a pas lu
+        self.char_fault = svc.get_characteristic("StatusFault")
+        self.set_unavailable()
 
-    @property
-    def device_urls(self) -> list[str]:
-        return [self.device_url]
-
-    def set_temperature(self, value: float) -> None:
+    def _apply(self, value: Any) -> None:
         clamped = max(TEMP_MIN, min(TEMP_MAX, float(value)))
         self.char_temp.set_value(clamped)
         self.char_active.set_value(True)
         self.char_fault.set_value(FAULT_NONE)
 
     def set_unavailable(self) -> None:
-        """API muette : on signale un défaut plutôt qu'une valeur figée trompeuse."""
         self.char_active.set_value(False)
         self.char_fault.set_value(FAULT_GENERAL)
 
-    def update(self, states_by_url: dict[str, dict[str, Any]]) -> None:
-        states = states_by_url.get(self.device_url, {})
-        value = states.get(self.state_name)
-        if value is None:
-            if not self._warned_missing:
-                temp_states = sorted(n for n in states if "emperatur" in n.lower())
-                _LOGGER.warning(
-                    "State '%s' introuvable sur %s (capteur '%s'). "
-                    "States de température disponibles : %s. "
-                    "Corrigez `sensors.%s.state` dans config.yaml.",
-                    self.state_name, self.device_url, self.feature,
-                    ", ".join(temp_states) or "(aucun)", self.feature,
-                )
-                self._warned_missing = True
-            self.set_unavailable()
-            return
-        self._warned_missing = False
-        try:
-            self.set_temperature(float(value))
-        except (TypeError, ValueError):
-            _LOGGER.warning("Valeur non numérique pour %s : %r", self.feature, value)
-            self.set_unavailable()
+
+class HumiditySensorAccessory(_SensorAccessory):
+    def __init__(self, driver, name, device_url, state_name, aid):
+        super().__init__(driver, name, device_url, state_name, aid)
+        svc = self.add_preload_service(
+            "HumiditySensor", chars=["StatusActive", "StatusFault"]
+        )
+        self.char_hum = svc.get_characteristic("CurrentRelativeHumidity")
+        self.char_active = svc.get_characteristic("StatusActive")
+        self.char_fault = svc.get_characteristic("StatusFault")
+        self.set_unavailable()
+
+    def _apply(self, value: Any) -> None:
+        clamped = max(0.0, min(100.0, float(value)))
+        self.char_hum.set_value(clamped)
+        self.char_active.set_value(True)
+        self.char_fault.set_value(FAULT_NONE)
+
+    def set_unavailable(self) -> None:
+        self.char_active.set_value(False)
+        self.char_fault.set_value(FAULT_GENERAL)
+
+
+# type d'entrée `exposed` → classe d'accessoire.
+_ACCESSORY_BY_TYPE = {
+    TYPE_TEMPERATURE: TemperatureSensorAccessory,
+    TYPE_TEMPERATURE_SETPOINT: TemperatureSensorAccessory,
+    TYPE_HUMIDITY: HumiditySensorAccessory,
+}
 
 
 class CozytouchBridge(Bridge):
-    """Bridge HAP : héberge un accessoire par fonction activée."""
+    """Bridge HAP : un accessoire par capacité exposée."""
 
     def __init__(self, driver, cfg: dict[str, Any]):
         super().__init__(driver, cfg["homekit"]["name"])
         self._cfg = cfg
         self._client: CozytouchClient | None = None
-        # Accessoires enfants exposant chacun .device_urls, .update(), .set_unavailable()
-        self._components: list[Any] = []
+        self._components: list[_SensorAccessory] = []
         self._stopped = False
         self._run_task: asyncio.Task | None = None
 
         info = self.get_service("AccessoryInformation")
         info.configure_char("Manufacturer", value="Atlantic")
-        info.configure_char("Model", value="Alfea Extensa AI Duo")
+        info.configure_char("Model", value="Cozytouch")
         info.configure_char(
             "SerialNumber", value=self._cfg["device"].get("pac_url") or "cozytouch-bridge"
         )
@@ -139,50 +181,52 @@ class CozytouchBridge(Bridge):
         self._build()
 
     # ── Construction ─────────────────────────────────────────────────────────
-    def _resolve_url(self, device_key: str) -> str:
-        """Repli legacy device: pac/ecs (si un capteur n'a pas de device_url)."""
-        if device_key == "ecs":
-            return self._cfg["device"].get("ecs_url", "")
-        return self._cfg["device"].get("pac_url", "")
-
-    def _build(self) -> None:
+    def _legacy_exposed(self) -> list[dict[str, Any]]:
+        """Convertit l'ancien schéma features/sensors en entrées `exposed`."""
         features = self._cfg.get("features", {})
         sensors = self._cfg.get("sensors", {})
-
+        out: list[dict[str, Any]] = []
         for feature in FEATURE_ORDER:
-            if not features.get(feature):
+            if not features.get(feature) or feature not in IMPLEMENTED_FEATURES:
                 continue
-            if feature not in IMPLEMENTED_FEATURES:
-                _LOGGER.warning(
-                    "Feature '%s' activée mais non implémentée — ignorée.", feature
-                )
-                continue
-
             mapping = sensors.get(feature, {})
-            device_url = mapping.get("device_url") or self._resolve_url(
-                mapping.get("device", "pac")
+            device_url = mapping.get("device_url") or (
+                self._cfg["device"].get("ecs_url" if mapping.get("device") == "ecs" else "pac_url", "")
             )
-            state_name = mapping.get("state", "")
-            if not device_url or not state_name:
-                _LOGGER.error(
-                    "Feature '%s' activée mais device_url/state manquant "
-                    "(device_url=%r state=%r) — accessoire non créé. Lancez "
-                    "`explore` puis `configure`.",
-                    feature, device_url, state_name,
-                )
-                continue
+            state = mapping.get("state", "")
+            if device_url and state:
+                out.append({
+                    "aid": feature_aid(feature),
+                    "type": TYPE_TEMPERATURE,
+                    "name": SENSOR_NAMES.get(feature, feature),
+                    "device_url": device_url,
+                    "state": state,
+                })
+        return out
 
-            acc = TemperatureSensorAccessory(self.driver, feature, device_url, state_name)
+    def _build(self) -> None:
+        exposed = self._cfg.get("exposed") or self._legacy_exposed()
+        for entry in exposed:
+            acc_cls = _ACCESSORY_BY_TYPE.get(entry.get("type"))
+            if acc_cls is None:
+                _LOGGER.warning("Type d'accessoire inconnu, ignoré : %r", entry.get("type"))
+                continue
+            device_url = entry.get("device_url", "")
+            state = entry.get("state", "")
+            aid = entry.get("aid")
+            if not device_url or not state or not isinstance(aid, int):
+                _LOGGER.error("Entrée exposée invalide (ignorée) : %r", entry)
+                continue
+            acc = acc_cls(self.driver, entry.get("name", state), device_url, state, aid)
             self.add_accessory(acc)
             self._components.append(acc)
             _LOGGER.info(
-                "Accessoire '%s' (AID %s) ← %s @ %s",
-                feature, acc.aid, state_name, device_url,
+                "Accessoire '%s' (AID %s, %s) ← %s @ %s",
+                entry.get("name"), aid, entry.get("type"), state, device_url,
             )
-
         if not self._components:
             _LOGGER.warning(
-                "Aucun accessoire créé. Vérifiez features + device_url + states."
+                "Aucun accessoire exposé. Lancez `configure` pour en choisir."
             )
 
     @property
@@ -196,7 +240,6 @@ class CozytouchBridge(Bridge):
 
     # ── Boucle de fonctionnement ─────────────────────────────────────────────
     async def run(self) -> None:
-        """Boucle de polling (lancée une fois par le driver, dans sa loop)."""
         cz = self._cfg["cozytouch"]
         poll = self._cfg["polling"]
         interval = int(poll["interval"])
@@ -223,7 +266,7 @@ class CozytouchBridge(Bridge):
                 backoff = min(backoff_max, backoff * 2)
             except asyncio.CancelledError:
                 break
-            except Exception as exc:  # noqa: BLE001 — la boucle ne doit jamais mourir
+            except Exception as exc:  # noqa: BLE001
                 _LOGGER.exception("Erreur inattendue dans la boucle : %s", exc)
                 self._mark_all_unavailable()
                 await self._sleep(backoff)
@@ -245,7 +288,6 @@ class CozytouchBridge(Bridge):
         await asyncio.sleep(seconds)
 
     async def stop(self) -> None:
-        """Appelé par le driver au shutdown."""
         self._stopped = True
         task = self._run_task
         if task is not None and task is not asyncio.current_task():

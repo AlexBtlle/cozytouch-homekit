@@ -9,9 +9,10 @@ Les données sont lues depuis l'API cloud **Overkiz / Cozytouch** via
 [`pyoverkiz`](https://github.com/iMicknl/python-overkiz-api) et publiées en
 HomeKit via [HAP-python](https://github.com/ikalchev/HAP-python).
 
-> **V1 (MVP) — lecture seule.** Capteurs de température (ambiante, extérieure,
-> ECS) exposés comme services `TemperatureSensor`. Le contrôle (thermostat,
-> boost ECS) est prévu en V2.
+> **État — lecture seule, auto-détectée.** `configure` détecte les capacités
+> de ton compte (capteurs de température, d'humidité, consignes…) et te laisse
+> cocher ce que tu exposes ; chaque choix = un accessoire du bridge. Le contrôle
+> (thermostat, boost ECS) est prévu en V2 sur le même principe.
 
 ---
 
@@ -85,35 +86,38 @@ les sections `device` et `sensors`).
 `configure` écrit `config.yaml` (gitignored, `chmod 0600`). Il gère :
 
 1. **identifiants Cozytouch** (login + mot de passe + serveur) ;
-2. **deviceURL** de la PAC / ECS ;
-3. **choix des fonctions** exposées à HomeKit (cases à cocher).
+2. **connexion au compte → détection automatique** des capacités exposables ;
+3. **cases à cocher** : tu choisis ce que tu veux exposer à HomeKit.
 
-Voir [`config.example.yaml`](config.example.yaml) pour toutes les clés. Extrait
-des feature flags :
+Pas de mapping à écrire à la main : `configure` interroge ton compte Overkiz,
+reconnaît les states mappables (températures, humidité, consignes…) et te
+présente la liste. Chaque capacité cochée devient un **accessoire du bridge**
+(sa propre tuile, rangeable dans sa propre pièce). Le résultat est stocké dans
+`config.yaml` sous `exposed:` (cf. [`config.example.yaml`](config.example.yaml)) :
 
 ```yaml
-features:
-  temp_ambiante:   true
-  temp_exterieure: true
-  temp_ecs:        false
-  thermostat:      false   # V2 — non implémenté
-  boost_ecs:       false   # V2 — non implémenté
+exposed:
+  - aid: 2
+    type: "temperature_sensor"
+    name: "Température ambiante"
+    device_url: "io://…/…"
+    state: "core:TemperatureState"
 ```
 
-Un flag `false` ⇒ service **absent** de l'accessoire ⇒ **aucune tuile** dans Maison.
+Types reconnus actuellement : `temperature_sensor`, `temperature_setpoint`
+(consigne, lecture), `humidity_sensor`. Le contrôle (thermostat, boost ECS…)
+viendra en V2 sur le même principe (détection → choix).
 
 ### ⚠️ Changer la structure APRÈS appairage
 
 - **Avant le 1er appairage** : aucun souci, configurez librement.
-- **En cours de vie** : modifier les services d'un accessoire déjà appairé →
-  1. `configure`, 2. **redémarrer** le service, 3. HAP-python republie en
-  incrémentant le **config number (c#)** → HomeKit relit la structure.
-- **Activer** un service après coup : propre (nouvelle tuile).
-- **Désactiver** un service déjà appairé : peut laisser une **tuile fantôme**.
-  Dans le pire cas, retirer puis ré-ajouter l'accessoire dans Maison.
-
-> Astuce : si vous figez la liste (p. ex. 2 capteurs) **dès l'installation**,
-> vous évitez complètement ce piège.
+- **En cours de vie** : ré-exécuter `configure` puis **redémarrer** le service →
+  HAP-python republie en incrémentant le **config number (c#)** → HomeKit relit.
+- **Ajouter** un accessoire après coup : propre (nouvelle tuile).
+- **Retirer** un accessoire déjà appairé : peut laisser une **tuile fantôme**.
+  Dans le pire cas, retirer puis ré-ajouter le bridge dans Maison.
+- Les **AID restent stables** (figés par entrée `exposed`) → pas de réorganisation
+  des accessoires conservés.
 
 ---
 

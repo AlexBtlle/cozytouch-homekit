@@ -15,44 +15,35 @@ cozytouch:
   # Serveur Overkiz. Pour Atlantic/Cozytouch : "atlantic_cozytouch".
   server: "atlantic_cozytouch"
 
-# (Legacy/optionnel) deviceURL nommés, utilisés seulement si un capteur
-# ci-dessous n'a pas son propre device_url. Plus nécessaire avec le mapping
-# par-capteur (recommandé).
+# Accessoires exposés à HomeKit — NORMALEMENT généré par `configure`, qui
+# détecte automatiquement les capacités de ton compte et te les fait cocher.
+# Un accessoire (= une tuile, rangeable dans sa propre pièce) par entrée.
+#   aid        : identifiant HomeKit STABLE (>= 2 ; attribué automatiquement)
+#   type       : temperature_sensor | temperature_setpoint | humidity_sensor
+#   name       : libellé de la tuile (renommable dans Maison)
+#   device_url : device Overkiz source
+#   state      : nom du state Overkiz lu
+#
+# Exemple RÉEL (Alféa Extensa AI Duo, firmware io:AtlanticPassAPC*) :
+exposed:
+  - aid: 2
+    type: "temperature_sensor"
+    name: "Température ambiante"      # io:AtlanticPassAPCZoneTemperatureSensor
+    device_url: "io://1234-5678-9012/XXXXXXXX"
+    state: "core:TemperatureState"
+  - aid: 3
+    type: "temperature_sensor"
+    name: "Température extérieure"    # io:AtlanticPassAPCOutsideTemperatureSensor
+    device_url: "io://1234-5678-9012/XXXXXXXX"
+    state: "core:TemperatureState"
+
+# (Legacy) Ancien schéma features/sensors + device : ignoré dès que `exposed`
+# est présent. Conservé pour rétro-compatibilité.
 device:
   pac_url: ""
   ecs_url: ""
 
-# Mapping capteur HomeKit → (device_url + state) Overkiz.
-# ⚠️ Chaque sonde est un device Overkiz DISTINCT (ambiante / extérieure / ECS
-#    ont chacune leur device_url). Les noms de states dépendent de VOTRE
-#    firmware → faire `explore` d'abord, ne PAS coder en aveugle (Étape 0).
-#
-# Exemple RÉEL (Alféa Extensa AI Duo, firmware io:AtlanticPassAPC*) :
-sensors:
-  temp_ambiante:
-    # io:AtlanticPassAPCZoneTemperatureSensor
-    device_url: "io://1234-5678-9012/XXXXXXXX"
-    state: "core:TemperatureState"
-  temp_exterieure:
-    # io:AtlanticPassAPCOutsideTemperatureSensor
-    device_url: "io://1234-5678-9012/XXXXXXXX"
-    state: "core:TemperatureState"
-  temp_ecs:
-    # io:AtlanticPassAPCDHWComponent — ⚠ ce firmware n'expose que des CONSIGNES
-    # ECS (pas de température mesurée du ballon).
-    device_url: "io://1234-5678-9012/XXXXXXXX"
-    state: "core:TargetDHWTemperatureState"
-
-# Quels services exposer à HomeKit. `false` = service absent = aucune tuile.
-# (V1 : seuls les capteurs de température sont implémentés.)
-features:
-  temp_ambiante:   true
-  temp_exterieure: true
-  temp_ecs:        false
-  thermostat:      false   # V2 — non implémenté
-  boost_ecs:       false   # V2 — non implémenté
-
-# Paramètres HomeKit (accessoire standalone, PAS un bridge).
+# Paramètres HomeKit (bridge).
 homekit:
   name: "PAC Atlantic"
   port: 51826
