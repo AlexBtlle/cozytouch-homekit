@@ -99,6 +99,84 @@ def _ask_features(current: dict[str, bool]) -> dict[str, bool]:
     return result
 
 
+def _discover_devices(cfg: dict[str, Any]) -> list[Any]:
+    """Liste les devices Overkiz (pour aider au mapping). [] si échec."""
+    import asyncio
+
+    from .overkiz_client import CozytouchClient
+
+    cz = cfg["cozytouch"]
+    if not cz.get("username") or not cz.get("password"):
+        return []
+
+    async def _run() -> list[Any]:
+        client = CozytouchClient(cz["username"], cz["password"], cz["server"])
+        try:
+            return await client.get_devices()
+        finally:
+            await client.close()
+
+    try:
+        return asyncio.run(_run())
+    except Exception as exc:  # noqa: BLE001 — la découverte est un bonus
+        console.print(f"[yellow]Découverte impossible ({exc}). Saisie manuelle.[/]")
+        return []
+
+
+def _print_device_reference(devices: list[Any]) -> None:
+    """Affiche label / controllable_name / device_url + states de température."""
+    from rich.table import Table
+
+    table = Table(title="Devices avec states de température")
+    table.add_column("Label", style="bold")
+    table.add_column("controllable_name")
+    table.add_column("device_url", style="cyan")
+    table.add_column("states température (valeur)")
+    for dev in devices:
+        temps = [
+            f"{getattr(s, 'name', '')}={getattr(s, 'value', '')}"
+            for s in getattr(dev, "states", []) or []
+            if "emperatur" in str(getattr(s, "name", ""))
+        ]
+        if not temps:
+            continue
+        table.add_row(
+            str(getattr(dev, "label", "")),
+            str(getattr(dev, "controllable_name", "")),
+            str(getattr(dev, "device_url", "")),
+            "\n".join(temps),
+        )
+    console.print(table)
+
+
+def _configure_sensor_mapping(cfg: dict[str, Any], active: list[str]) -> None:
+    """Pour chaque capteur activé : saisie device_url + state Overkiz."""
+    sensors = cfg.setdefault("sensors", {})
+
+    # Aide optionnelle : récupérer la liste des devices depuis Overkiz.
+    want_discovery = _ask_text(
+        "Récupérer la liste des devices depuis Overkiz pour t'aider ? (o/n)", "o"
+    ).strip().lower().startswith("o")
+    if want_discovery:
+        console.print("[cyan]Connexion à Overkiz…[/]")
+        devices = _discover_devices(cfg)
+        if devices:
+            _print_device_reference(devices)
+            console.print(
+                "[dim]Copie le device_url de la sonde voulue ci-dessus.[/]"
+            )
+
+    for feature in active:
+        label = FEATURE_LABELS.get(feature, feature).split("  [")[0]
+        console.print(f"\n[bold]{label}[/]")
+        current = sensors.get(feature, {})
+        device_url = _ask_text("  device_url", current.get("device_url", ""))
+        state = _ask_text(
+            "  state Overkiz", current.get("state", "core:TemperatureState")
+        )
+        sensors[feature] = {"device_url": device_url.strip(), "state": state.strip()}
+
+
 def run_configure(argv: list[str] | None = None) -> int:
     console.print("[bold cyan]Configuration cozytouch-homekit[/]\n")
     cfg = _load_or_default()
@@ -115,13 +193,8 @@ def run_configure(argv: list[str] | None = None) -> int:
     )
 
     # ── 2. deviceURL (optionnel ici, sinon via `explore`) ────────────────────
-    console.print("\n[bold]2) deviceURL[/] [dim](laisser vide si pas encore fait `explore`)[/]")
-    dev = cfg["device"]
-    dev["pac_url"] = _ask_text("deviceURL PAC", dev.get("pac_url", ""))
-    dev["ecs_url"] = _ask_text("deviceURL ECS (Duo, vide si absent)", dev.get("ecs_url", ""))
-
-    # ── 3. Choix des fonctions ───────────────────────────────────────────────
-    console.print("\n[bold]3) Fonctions exposées[/]")
+    # ── 2. Choix des fonctions ───────────────────────────────────────────────
+    console.print("\n[bold]2) Fonctions exposées[/]")
     cfg["features"] = _ask_features(cfg.get("features", {}))
 
     # Avertissement V2.
@@ -135,19 +208,28 @@ def run_configure(argv: list[str] | None = None) -> int:
             + ", ".join(FEATURE_LABELS[n].split("  [")[0] for n in v2_on)
         )
 
+    # ── 3. Mapping des capteurs activés (device_url + state Overkiz) ──────────
+    active = [n for n in FEATURE_ORDER if cfg["features"].get(n) and n in IMPLEMENTED_FEATURES]
+    if active:
+        console.print("\n[bold]3) Mapping des capteurs[/] [dim](device_url + state Overkiz)[/]")
+        _configure_sensor_mapping(cfg, active)
+    else:
+        console.print("\n[dim]Aucun capteur de température activé à mapper.[/]")
+
     # ── Sauvegarde ───────────────────────────────────────────────────────────
     path = save_config(cfg)
     console.print(f"\n[green]✓[/] Configuration enregistrée : [bold]{path}[/] (droits 0600)")
 
-    active = [n for n in FEATURE_ORDER if cfg["features"].get(n) and n in IMPLEMENTED_FEATURES]
     console.print(
         "Services HomeKit qui seront exposés : "
         + (", ".join(active) if active else "[red]aucun[/]")
     )
-    if not dev["pac_url"]:
+    unmapped = [n for n in active if not cfg["sensors"].get(n, {}).get("device_url")]
+    if unmapped:
         console.print(
-            "\n[yellow]Pensez à lancer[/] [bold]python -m cozytouch_homekit explore[/] "
-            "pour récupérer les deviceURL et confirmer les noms de states."
+            "\n[yellow]⚠ Sans device_url, ces capteurs ne seront pas créés :[/] "
+            + ", ".join(unmapped)
+            + "\n  Lancez [bold]python -m cozytouch_homekit explore[/] puis re-`configure`."
         )
     console.print(
         "\n[dim]Note : modifier la structure APRÈS appairage nécessite de "

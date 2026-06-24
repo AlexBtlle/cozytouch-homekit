@@ -6,11 +6,22 @@ sont des **hypothèses** à confirmer au dump.
 
 ## V1 — lecture seule (implémenté)
 
-| Feature (config) | Service HomeKit | Caractéristique | State Overkiz (à confirmer) | Device |
+Chaque capteur cible son **propre** `device_url` (sous-devices Overkiz distincts).
+
+| Feature (config) | Service HomeKit | Caractéristique | State Overkiz | `controllable_name` du device |
 |---|---|---|---|---|
-| `temp_ambiante`   | `TemperatureSensor` | `CurrentTemperature` | `core:TemperatureState`        | `pac` |
-| `temp_exterieure` | `TemperatureSensor` | `CurrentTemperature` | `core:OutsideTemperatureState` | `pac` |
-| `temp_ecs`        | `TemperatureSensor` | `CurrentTemperature` | `core:TemperatureState`        | `ecs` |
+| `temp_ambiante`   | `TemperatureSensor` | `CurrentTemperature` | `core:TemperatureState` | `io:AtlanticPassAPCZoneTemperatureSensor` |
+| `temp_exterieure` | `TemperatureSensor` | `CurrentTemperature` | `core:TemperatureState` | `io:AtlanticPassAPCOutsideTemperatureSensor` |
+| `temp_ecs`        | `TemperatureSensor` | `CurrentTemperature` | `core:TargetDHWTemperatureState` ⚠ | `io:AtlanticPassAPCDHWComponent` |
+
+> ✅ **Confirmé sur firmware `io:AtlanticPassAPC*`** (Alféa Extensa AI Duo) via
+> `explore`. Sur un autre firmware, les `controllable_name`/states peuvent
+> différer — refaire `explore`.
+>
+> ⚠️ **ECS** : ce firmware n'expose que des **consignes** DHW
+> (`core:ComfortTargetDHWTemperatureState`, `core:EcoTargetDHWTemperatureState`,
+> `core:TargetDHWTemperatureState`), **pas** de température mesurée du ballon.
+> Le capteur `temp_ecs` reflète donc une consigne, pas une mesure.
 
 Caractéristiques annexes ajoutées à chaque capteur :
 - `StatusActive` / `StatusFault` → passent en défaut quand l'API ne répond pas

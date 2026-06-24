@@ -15,26 +15,33 @@ cozytouch:
   # Serveur Overkiz. Pour Atlantic/Cozytouch : "atlantic_cozytouch".
   server: "atlantic_cozytouch"
 
-# deviceURL de la PAC et (pour le Duo) du composant ECS.
-# À récupérer via :  python -m cozytouch_homekit explore
+# (Legacy/optionnel) deviceURL nommés, utilisés seulement si un capteur
+# ci-dessous n'a pas son propre device_url. Plus nécessaire avec le mapping
+# par-capteur (recommandé).
 device:
-  pac_url: ""        # ex: "io://1234-5678-9012/12345678"
-  ecs_url: ""        # composant ECS du Duo, vide si absent
+  pac_url: ""
+  ecs_url: ""
 
-# Mapping capteur HomeKit → state Overkiz.
-# ⚠️ Les noms de states dépendent de VOTRE firmware. Faire `explore` d'abord :
-#    ne PAS coder le mapping en aveugle (cf. README, Étape 0).
-# `device` vaut "pac" ou "ecs" et référence les URLs ci-dessus.
+# Mapping capteur HomeKit → (device_url + state) Overkiz.
+# ⚠️ Chaque sonde est un device Overkiz DISTINCT (ambiante / extérieure / ECS
+#    ont chacune leur device_url). Les noms de states dépendent de VOTRE
+#    firmware → faire `explore` d'abord, ne PAS coder en aveugle (Étape 0).
+#
+# Exemple RÉEL (Alféa Extensa AI Duo, firmware io:AtlanticPassAPC*) :
 sensors:
   temp_ambiante:
-    device: "pac"
-    state: "core:TemperatureState"            # à CONFIRMER au dump
+    # io:AtlanticPassAPCZoneTemperatureSensor
+    device_url: "io://1234-5678-9012/XXXXXXXX"
+    state: "core:TemperatureState"
   temp_exterieure:
-    device: "pac"
-    state: "core:OutsideTemperatureState"     # à CONFIRMER au dump
+    # io:AtlanticPassAPCOutsideTemperatureSensor
+    device_url: "io://1234-5678-9012/XXXXXXXX"
+    state: "core:TemperatureState"
   temp_ecs:
-    device: "ecs"
-    state: "core:TemperatureState"            # à CONFIRMER au dump (Duo)
+    # io:AtlanticPassAPCDHWComponent — ⚠ ce firmware n'expose que des CONSIGNES
+    # ECS (pas de température mesurée du ballon).
+    device_url: "io://1234-5678-9012/XXXXXXXX"
+    state: "core:TargetDHWTemperatureState"
 
 # Quels services exposer à HomeKit. `false` = service absent = aucune tuile.
 # (V1 : seuls les capteurs de température sont implémentés.)

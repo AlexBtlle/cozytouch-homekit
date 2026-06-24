@@ -108,13 +108,17 @@ class CozytouchAccessory(Accessory):
                 continue
 
             mapping = sensors.get(feature, {})
-            device_url = self._resolve_url(mapping.get("device", "pac"))
+            # device_url direct prioritaire ; repli legacy sur device: pac/ecs.
+            device_url = mapping.get("device_url") or self._resolve_url(
+                mapping.get("device", "pac")
+            )
             state_name = mapping.get("state", "")
             if not device_url or not state_name:
                 _LOGGER.error(
                     "Feature '%s' activée mais device_url/state manquant "
-                    "(device=%r state=%r) — service non créé. Lancez `explore`.",
-                    feature, mapping.get("device"), state_name,
+                    "(device_url=%r state=%r) — service non créé. Lancez `explore` "
+                    "puis `configure`.",
+                    feature, device_url, state_name,
                 )
                 continue
 

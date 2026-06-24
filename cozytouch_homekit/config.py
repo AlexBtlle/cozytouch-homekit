@@ -37,9 +37,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "ecs_url": "",
     },
     "sensors": {
-        "temp_ambiante": {"device": "pac", "state": "core:TemperatureState"},
-        "temp_exterieure": {"device": "pac", "state": "core:OutsideTemperatureState"},
-        "temp_ecs": {"device": "ecs", "state": "core:TemperatureState"},
+        # Chaque capteur cible son PROPRE device_url (les sondes ambiante /
+        # extérieure / ECS sont des sous-devices Overkiz distincts). À remplir
+        # via `configure` ou après `explore`. `device` (pac/ecs) reste accepté
+        # en repli legacy si device_url est vide.
+        "temp_ambiante": {"device_url": "", "state": "core:TemperatureState"},
+        "temp_exterieure": {"device_url": "", "state": "core:TemperatureState"},
+        "temp_ecs": {"device_url": "", "state": "core:TargetDHWTemperatureState"},
     },
     "features": {
         "temp_ambiante": True,
