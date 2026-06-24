@@ -205,7 +205,7 @@ Le service expose une **mini page web** sur `http://<pi>.local:8080/`
   intervalle de polling ;
 - **Accessoires exposés** : nom, type, valeur courante, disponibilité.
 
-La page se rafraîchit toute seule (10 s) ; un endpoint JSON est dispo sur
+Recharge la page pour actualiser ; un endpoint JSON est dispo sur
 `/api/status`. Servie en interne par **aiohttp** (déjà tiré par `pyoverkiz`) et
 **pyqrcode** → **pas de dépendance supplémentaire**.
 

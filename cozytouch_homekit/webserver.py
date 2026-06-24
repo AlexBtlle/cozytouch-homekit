@@ -183,7 +183,6 @@ def render_html(bridge: Any, cfg: dict[str, Any]) -> str:
 <html lang="fr"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="10">
 <title>{name} — statut</title>
 <style>
  :root {{ color-scheme: light dark; }}
@@ -245,7 +244,7 @@ def render_html(bridge: Any, cfg: dict[str, Any]) -> str:
     </table>
   </div>
 </div>
-<footer>Rafraîchissement automatique toutes les 10 s · {_fmt_dt(datetime.now())}</footer>
+<footer>Généré à {_fmt_dt(datetime.now())} · rechargez la page pour actualiser</footer>
 </body></html>"""
 
 
