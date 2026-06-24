@@ -57,6 +57,8 @@ class _SensorAccessory(Accessory):
     """Base : un accessoire enfant lisant un (device_url, state) Overkiz."""
 
     category = CATEGORY_SENSOR
+    kind = "sensor"
+    unit = ""
 
     def __init__(self, driver, name: str, device_url: str, state_name: str, aid: int):
         super().__init__(driver, name, aid=aid)
@@ -82,6 +84,21 @@ class _SensorAccessory(Accessory):
     def set_unavailable(self) -> None:  # pragma: no cover - interface
         raise NotImplementedError
 
+    def current_value(self) -> Any:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def status(self) -> dict[str, Any]:
+        """Instantané pour la page web."""
+        return {
+            "name": self._name,
+            "kind": self.kind,
+            "unit": self.unit,
+            "value": self.current_value(),
+            "available": bool(self.char_active.value),
+            "device_url": self.device_url,
+            "state": self.state_name,
+        }
+
     def update(self, states_by_url: dict[str, dict[str, Any]]) -> None:
         states = states_by_url.get(self.device_url, {})
         value = states.get(self.state_name)
@@ -106,6 +123,9 @@ class _SensorAccessory(Accessory):
 
 
 class TemperatureSensorAccessory(_SensorAccessory):
+    kind = "température"
+    unit = "°C"
+
     def __init__(self, driver, name, device_url, state_name, aid):
         super().__init__(driver, name, device_url, state_name, aid)
         svc = self.add_preload_service(
@@ -129,8 +149,14 @@ class TemperatureSensorAccessory(_SensorAccessory):
         self.char_active.set_value(False)
         self.char_fault.set_value(FAULT_GENERAL)
 
+    def current_value(self) -> Any:
+        return self.char_temp.value
+
 
 class HumiditySensorAccessory(_SensorAccessory):
+    kind = "humidité"
+    unit = "%"
+
     def __init__(self, driver, name, device_url, state_name, aid):
         super().__init__(driver, name, device_url, state_name, aid)
         svc = self.add_preload_service(
@@ -151,6 +177,9 @@ class HumiditySensorAccessory(_SensorAccessory):
         self.char_active.set_value(False)
         self.char_fault.set_value(FAULT_GENERAL)
 
+    def current_value(self) -> Any:
+        return self.char_hum.value
+
 
 # type d'entrée `exposed` → classe d'accessoire.
 _ACCESSORY_BY_TYPE = {
@@ -170,6 +199,11 @@ class CozytouchBridge(Bridge):
         self._components: list[_SensorAccessory] = []
         self._stopped = False
         self._run_task: asyncio.Task | None = None
+        self._web: Any = None
+        # État exposé à la page web de statut.
+        self.connected = False
+        self.last_poll_ok: Any = None
+        self.last_error: str | None = None
 
         info = self.get_service("AccessoryInformation")
         info.configure_char("Manufacturer", value="Atlantic")
@@ -250,17 +284,28 @@ class CozytouchBridge(Bridge):
         backoff = backoff_base
         self._run_task = asyncio.current_task()
 
+        await self._start_web()
+
         while not self._stopped:
             try:
                 await self._poll_once()
+                self.connected = True
+                self.last_error = None
+                from datetime import datetime
+
+                self.last_poll_ok = datetime.now()
                 backoff = backoff_base
                 await self._sleep(interval)
             except AuthError as exc:
                 _LOGGER.error("%s — corrigez `configure`. Pause prolongée.", exc)
+                self.connected = False
+                self.last_error = str(exc)
                 self._mark_all_unavailable()
                 await self._sleep(backoff_max)
             except TransientError as exc:
                 _LOGGER.warning("Erreur temporaire : %s. Backoff %ss.", exc, backoff)
+                self.connected = False
+                self.last_error = str(exc)
                 self._mark_all_unavailable()
                 await self._sleep(backoff)
                 backoff = min(backoff_max, backoff * 2)
@@ -268,6 +313,8 @@ class CozytouchBridge(Bridge):
                 break
             except Exception as exc:  # noqa: BLE001
                 _LOGGER.exception("Erreur inattendue dans la boucle : %s", exc)
+                self.connected = False
+                self.last_error = str(exc)
                 self._mark_all_unavailable()
                 await self._sleep(backoff)
                 backoff = min(backoff_max, backoff * 2)
@@ -287,8 +334,24 @@ class CozytouchBridge(Bridge):
     async def _sleep(self, seconds: float) -> None:
         await asyncio.sleep(seconds)
 
+    async def _start_web(self) -> None:
+        """Démarre la page de statut si activée (best-effort)."""
+        if not self._cfg.get("web", {}).get("enabled", False):
+            return
+        try:
+            from .webserver import StatusServer
+
+            self._web = StatusServer(self, self._cfg)
+            await self._web.start()
+        except Exception as exc:  # noqa: BLE001 — la page web ne doit pas tuer le service
+            _LOGGER.warning("Page de statut non démarrée : %s", exc)
+            self._web = None
+
     async def stop(self) -> None:
         self._stopped = True
+        if self._web is not None:
+            await self._web.stop()
+            self._web = None
         task = self._run_task
         if task is not None and task is not asyncio.current_task():
             task.cancel()

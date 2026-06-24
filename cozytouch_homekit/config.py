@@ -62,6 +62,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "backoff_base": 30,
         "backoff_max": 600,
     },
+    # Mini page web de statut (port 8080 par défaut). enabled: false pour la
+    # désactiver. ⚠️ affiche le PIN d'appairage + infos système (LAN de confiance).
+    "web": {
+        "enabled": True,
+        "host": "0.0.0.0",
+        "port": 8080,
+    },
     # Liste des capacités exposées à HomeKit, détectées et choisies via
     # `configure` (un accessoire par entrée). Chaque entrée :
     #   {aid, type, name, device_url, state}

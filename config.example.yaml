@@ -55,3 +55,11 @@ polling:
   interval: 120       # secondes entre deux lectures (90–300 ok ; 30 minimum)
   backoff_base: 30    # délai initial de backoff sur erreur
   backoff_max: 600    # plafond du backoff exponentiel
+
+# Mini page web de statut : http://<pi>.local:8080/
+# ⚠️ Affiche le PIN d'appairage + infos système → réseau de confiance.
+#    (N'expose jamais le mot de passe Cozytouch.) Mettre enabled: false pour couper.
+web:
+  enabled: true
+  host: "0.0.0.0"     # 0.0.0.0 = accessible sur le LAN ; 127.0.0.1 = local seul
+  port: 8080

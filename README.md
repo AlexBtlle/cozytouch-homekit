@@ -194,6 +194,26 @@ user non-privilégié). Logs : `journalctl -u cozytouch-homekit -f`.
 
 ---
 
+## Page de statut
+
+Le service expose une **mini page web** sur `http://<pi>.local:8080/`
+(configurable / désactivable sous `web:` dans `config.yaml`). Elle affiche :
+
+- **Appairage HomeKit** : QR code + PIN tant que non appairé, sinon « appairé » ;
+- **Raspberry Pi** : hostname, IP, température CPU, uptime, charge, RAM ;
+- **Overkiz** : connecté ou non, heure de la dernière lecture, dernière erreur,
+  intervalle de polling ;
+- **Accessoires exposés** : nom, type, valeur courante, disponibilité.
+
+La page se rafraîchit toute seule (10 s) ; un endpoint JSON est dispo sur
+`/api/status`. Servie en interne par **aiohttp** (déjà tiré par `pyoverkiz`) et
+**pyqrcode** → **pas de dépendance supplémentaire**.
+
+> ⚠️ Elle montre le PIN d'appairage et des infos système : à n'exposer que sur
+> un **réseau de confiance**. Elle n'affiche **jamais** le mot de passe Cozytouch.
+
+---
+
 ## Secrets
 
 `config.yaml`, `.env`, `accessory.state` et les dumps `explore_dump*.json` sont
