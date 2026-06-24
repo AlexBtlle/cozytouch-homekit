@@ -50,6 +50,7 @@ class TempSensorBinding:
         self.char_temp = service.get_characteristic("CurrentTemperature")
         self.char_fault = service.get_characteristic("StatusFault")
         self.char_active = service.get_characteristic("StatusActive")
+        self._warned_missing = False  # n'avertir qu'une fois du state introuvable
 
     def set_temperature(self, value: float) -> None:
         clamped = max(TEMP_MIN, min(TEMP_MAX, float(value)))
@@ -76,6 +77,7 @@ class CozytouchAccessory(Accessory):
         self._client: CozytouchClient | None = None
         self._bindings: list[TempSensorBinding] = []
         self._stopped = False
+        self._run_task: asyncio.Task | None = None
 
         self._set_info()
         self._build_services()
@@ -164,6 +166,8 @@ class CozytouchAccessory(Accessory):
 
         self._client = CozytouchClient(cz["username"], cz["password"], cz["server"])
         backoff = backoff_base
+        # Référence à notre propre tâche pour une annulation propre dans stop().
+        self._run_task = asyncio.current_task()
 
         while not self._stopped:
             try:
@@ -202,11 +206,22 @@ class CozytouchAccessory(Accessory):
             states = states_by_url.get(binding.device_url, {})
             value = states.get(binding.state_name)
             if value is None:
-                _LOGGER.debug(
-                    "State %s absent pour %s.", binding.state_name, binding.feature
-                )
+                if not binding._warned_missing:
+                    # Mapping probablement erroné → lister ce qui EXISTE vraiment.
+                    temp_states = sorted(
+                        n for n in states if "emperatur" in n.lower()
+                    )
+                    _LOGGER.warning(
+                        "State '%s' introuvable sur %s (capteur '%s'). "
+                        "States de température disponibles : %s. "
+                        "Corrigez `sensors.%s.state` dans config.yaml.",
+                        binding.state_name, binding.device_url, binding.feature,
+                        ", ".join(temp_states) or "(aucun)", binding.feature,
+                    )
+                    binding._warned_missing = True
                 binding.set_unavailable()
                 continue
+            binding._warned_missing = False
             try:
                 binding.set_temperature(float(value))
             except (TypeError, ValueError):
@@ -229,6 +244,15 @@ class CozytouchAccessory(Accessory):
     async def stop(self) -> None:
         """Appelé par le driver au shutdown."""
         self._stopped = True
+        # Annuler proprement la boucle run() (évite « Task was destroyed but it
+        # is pending! » au shutdown).
+        task = self._run_task
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
         if self._client is not None:
             await self._client.close()
         await super().stop()
