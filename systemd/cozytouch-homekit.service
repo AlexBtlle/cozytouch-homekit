@@ -1,0 +1,19 @@
+[Unit]
+Description=cozytouch-homekit — PAC Atlantic vers HomeKit (accessoire natif)
+# mDNS/HomeKit a besoin du réseau opérationnel.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# __USER__ / __WORKDIR__ sont substitués par install.sh.
+User=__USER__
+WorkingDirectory=__WORKDIR__
+ExecStart=__WORKDIR__/.venv/bin/python -m cozytouch_homekit run
+Restart=on-failure
+RestartSec=10
+# L'appairage HAP sur ARMv6 peut être lent : on ne tue pas trop vite.
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

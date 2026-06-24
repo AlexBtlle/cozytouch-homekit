@@ -1,0 +1,20 @@
+# Secrets & runtime state — JAMAIS commités
+config.yaml
+.env
+accessory.state
+*.state
+
+# Dumps de découverte (peuvent contenir des identifiants de passerelle)
+explore_dump*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Divers
+*.log
+.DS_Store

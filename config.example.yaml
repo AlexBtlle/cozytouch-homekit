@@ -1,0 +1,59 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# config.example.yaml — modèle de configuration
+#
+# NE PAS éditer ce fichier directement pour un usage réel : lancer plutôt
+#     python -m cozytouch_homekit configure
+# qui génère `config.yaml` (gitignored, contient vos identifiants).
+#
+# Ce modèle documente toutes les clés disponibles.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Identifiants du compte Cozytouch (cloud Atlantic).
+cozytouch:
+  username: "votre.email@example.com"
+  password: "votre_mot_de_passe"
+  # Serveur Overkiz. Pour Atlantic/Cozytouch : "atlantic_cozytouch".
+  server: "atlantic_cozytouch"
+
+# deviceURL de la PAC et (pour le Duo) du composant ECS.
+# À récupérer via :  python -m cozytouch_homekit explore
+device:
+  pac_url: ""        # ex: "io://1234-5678-9012/12345678"
+  ecs_url: ""        # composant ECS du Duo, vide si absent
+
+# Mapping capteur HomeKit → state Overkiz.
+# ⚠️ Les noms de states dépendent de VOTRE firmware. Faire `explore` d'abord :
+#    ne PAS coder le mapping en aveugle (cf. README, Étape 0).
+# `device` vaut "pac" ou "ecs" et référence les URLs ci-dessus.
+sensors:
+  temp_ambiante:
+    device: "pac"
+    state: "core:TemperatureState"            # à CONFIRMER au dump
+  temp_exterieure:
+    device: "pac"
+    state: "core:OutsideTemperatureState"     # à CONFIRMER au dump
+  temp_ecs:
+    device: "ecs"
+    state: "core:TemperatureState"            # à CONFIRMER au dump (Duo)
+
+# Quels services exposer à HomeKit. `false` = service absent = aucune tuile.
+# (V1 : seuls les capteurs de température sont implémentés.)
+features:
+  temp_ambiante:   true
+  temp_exterieure: true
+  temp_ecs:        false
+  thermostat:      false   # V2 — non implémenté
+  boost_ecs:       false   # V2 — non implémenté
+
+# Paramètres HomeKit (accessoire standalone, PAS un bridge).
+homekit:
+  name: "PAC Atlantic"
+  port: 51826
+  # Fichier d'état HAP (clés d'appairage + pincode). Stable entre redémarrages.
+  persist_file: "accessory.state"
+
+# Polling : l'API Overkiz throttle → espacer + backoff.
+polling:
+  interval: 45        # secondes entre deux lectures (30–60 recommandé)
+  backoff_base: 30    # délai initial de backoff sur erreur
+  backoff_max: 600    # plafond du backoff exponentiel
