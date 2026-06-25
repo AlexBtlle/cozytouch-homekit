@@ -19,8 +19,9 @@ from typing import Any
 
 from rich.console import Console
 
-from .config import DEFAULT_CONFIG, assign_aids, load_config, save_config
+from .config import DEFAULT_CONFIG, assign_aids, load_config, resolve_password, save_config
 from .detect import detect_capabilities
+from .secret_store import encrypt, is_encrypted
 
 console = Console()
 
@@ -72,7 +73,7 @@ def _discover_devices(cfg: dict[str, Any]) -> list[Any]:
         return []
 
     async def _run() -> list[Any]:
-        client = CozytouchClient(cz["username"], cz["password"], cz["server"])
+        client = CozytouchClient(cz["username"], resolve_password(cfg), cz["server"])
         try:
             return await client.get_devices()
         finally:
@@ -175,6 +176,12 @@ def run_configure(argv: list[str] | None = None) -> int:
         else:
             chosen = _select_capabilities(caps, cfg.get("exposed", []) or [])
             cfg["exposed"] = _capabilities_to_exposed(chosen, cfg.get("exposed", []) or [])
+
+    # ── Chiffrement du mot de passe au repos ─────────────────────────────────
+    pw = cfg["cozytouch"].get("password", "") or ""
+    if pw and not is_encrypted(pw):
+        cfg["cozytouch"]["password"] = encrypt(pw)
+        console.print("[dim]Mot de passe chiffré dans config.yaml (clé : .secret.key).[/]")
 
     # ── Sauvegarde ───────────────────────────────────────────────────────────
     path = save_config(cfg)

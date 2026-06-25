@@ -24,7 +24,7 @@ from typing import Any
 from pyhap.accessory import Accessory, Bridge
 from pyhap.const import CATEGORY_SENSOR
 
-from .config import FEATURE_ORDER, IMPLEMENTED_FEATURES
+from .config import FEATURE_ORDER, IMPLEMENTED_FEATURES, resolve_password
 from .detect import (
     TYPE_HUMIDITY,
     TYPE_TEMPERATURE,
@@ -280,7 +280,9 @@ class CozytouchBridge(Bridge):
         backoff_base = int(poll["backoff_base"])
         backoff_max = int(poll["backoff_max"])
 
-        self._client = CozytouchClient(cz["username"], cz["password"], cz["server"])
+        self._client = CozytouchClient(
+            cz["username"], resolve_password(self._cfg), cz["server"]
+        )
         backoff = backoff_base
         self._run_task = asyncio.current_task()
 

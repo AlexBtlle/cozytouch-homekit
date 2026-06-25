@@ -139,6 +139,13 @@ def resolve_persist_path(cfg: dict[str, Any]) -> Path:
     return p if p.is_absolute() else PROJECT_ROOT / p
 
 
+def resolve_password(cfg: dict[str, Any]) -> str:
+    """Mot de passe Cozytouch en clair (déchiffré si stocké chiffré)."""
+    from .secret_store import decrypt
+
+    return decrypt(cfg.get("cozytouch", {}).get("password", "") or "")
+
+
 def enabled_features(cfg: dict[str, Any]) -> list[str]:
     """Features activées ET implémentées, dans l'ordre canonique stable."""
     feats = cfg.get("features", {})

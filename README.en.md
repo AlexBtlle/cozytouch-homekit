@@ -213,9 +213,14 @@ Served internally by **aiohttp** (already pulled by `pyoverkiz`) and
 
 ## Secrets
 
-`config.yaml`, `.env`, `accessory.state` and the `explore_dump*.json` dumps are
-`.gitignore`d. **Never commit them**: they contain Cozytouch credentials, HAP
-pairing keys and/or your gateway ID.
+- The **Cozytouch password is encrypted at rest**: `configure` stores it as
+  `enc:v1:…` in `config.yaml`, with the key living in a separate `.secret.key`
+  file (0600, gitignored). The service decrypts it at startup.
+  > Threat model: protects against casual viewing / accidental sharing of
+  > `config.yaml`. **Not** a vault — root access (to both files) can decrypt.
+  > For OS-level hardening: `systemd-creds`.
+- `config.yaml`, `.secret.key`, `.env`, `accessory.state` and the
+  `explore_dump*.json` dumps are `.gitignore`d. **Never commit them.**
 
 ---
 

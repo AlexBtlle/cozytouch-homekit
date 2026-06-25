@@ -22,7 +22,7 @@ from typing import Any
 from rich.console import Console
 from rich.table import Table
 
-from .config import PROJECT_ROOT, load_config
+from .config import PROJECT_ROOT, load_config, resolve_password
 from .overkiz_client import CozytouchClient
 
 console = Console()
@@ -79,7 +79,7 @@ async def _run(anonymize: bool, out_path: Path) -> int:
         console.print("[red]Identifiants Cozytouch manquants.[/] Lancez `configure`.")
         return 1
 
-    client = CozytouchClient(creds["username"], creds["password"], creds["server"])
+    client = CozytouchClient(creds["username"], resolve_password(cfg), creds["server"])
     try:
         console.print("[cyan]Connexion au cloud Overkiz…[/]")
         devices = await client.get_devices()

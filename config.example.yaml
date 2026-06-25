@@ -12,9 +12,12 @@
 language: "en"
 
 # Identifiants du compte Cozytouch (cloud Atlantic).
+# ⚠️ Le mot de passe est CHIFFRÉ au repos par `configure` : dans le vrai
+#    config.yaml il apparaît sous la forme "enc:v1:…" (clé : fichier séparé
+#    .secret.key, 0600, gitignoré). Ne le saisissez pas à la main ici.
 cozytouch:
   username: "votre.email@example.com"
-  password: "votre_mot_de_passe"
+  password: "enc:v1:..."   # généré par `configure` (jamais en clair)
   # Serveur Overkiz. Pour Atlantic/Cozytouch : "atlantic_cozytouch".
   server: "atlantic_cozytouch"
 

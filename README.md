@@ -218,9 +218,14 @@ Recharge la page pour actualiser ; un endpoint JSON est dispo sur
 
 ## Secrets
 
-`config.yaml`, `.env`, `accessory.state` et les dumps `explore_dump*.json` sont
-`.gitignore`. **Ne les commitez jamais** : ils contiennent identifiants
-Cozytouch, clés d'appairage HAP et/ou l'ID de votre passerelle.
+- Le **mot de passe Cozytouch est chiffré au repos** : `configure` le stocke
+  sous la forme `enc:v1:…` dans `config.yaml`, la clé vivant dans un fichier
+  séparé `.secret.key` (0600, gitignoré). Le service déchiffre au démarrage.
+  > Modèle de menace : protège contre la lecture à l'œil / le partage accidentel
+  > de `config.yaml`. **Pas** un coffre-fort — un accès root (aux deux fichiers)
+  > permet de déchiffrer. Pour du durcissement OS : `systemd-creds`.
+- `config.yaml`, `.secret.key`, `.env`, `accessory.state` et les dumps
+  `explore_dump*.json` sont `.gitignore`. **Ne les commitez jamais.**
 
 ---
 

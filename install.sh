@@ -100,6 +100,8 @@ if [[ "${RUN_USER}" != "root" ]]; then
   $SUDO chown -R "${RUN_USER}:${RUN_USER}" "${VENV_DIR}" 2>/dev/null || true
   [[ -f "${PROJECT_DIR}/config.yaml" ]] && \
     $SUDO chown "${RUN_USER}:${RUN_USER}" "${PROJECT_DIR}/config.yaml"
+  [[ -f "${PROJECT_DIR}/.secret.key" ]] && \
+    $SUDO chown "${RUN_USER}:${RUN_USER}" "${PROJECT_DIR}/.secret.key"
   # The project dir must be writable by RUN_USER (accessory.state).
   $SUDO chown "${RUN_USER}:${RUN_USER}" "${PROJECT_DIR}" 2>/dev/null || true
   info "Artifact ownership assigned to ${RUN_USER}."

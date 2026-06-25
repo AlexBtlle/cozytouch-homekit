@@ -1,6 +1,7 @@
 # Secrets & runtime state — JAMAIS commités
 config.yaml
 .env
+.secret.key
 accessory.state
 *.state
 
