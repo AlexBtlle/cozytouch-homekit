@@ -11,10 +11,14 @@ Les données sont lues depuis l'API cloud **Overkiz / Cozytouch** via
 [`pyoverkiz`](https://github.com/iMicknl/python-overkiz-api) et publiées en
 HomeKit via [HAP-python](https://github.com/ikalchev/HAP-python).
 
-> **État — lecture seule, auto-détectée.** `configure` détecte les capacités
-> de ton compte (capteurs de température, d'humidité, consignes…) et te laisse
-> cocher ce que tu exposes ; chaque choix = un accessoire du bridge. Le contrôle
-> (thermostat, boost ECS) est prévu en V2 sur le même principe.
+> **Pont Overkiz → HomeKit générique, auto-détecté (lecture + écriture).**
+> `configure` interroge ton compte et détecte les capacités **par capacité**
+> (selon les `states`/`commands` de chaque device, pas par modèle) : capteurs
+> (température, humidité, contact, présence, mouvement, fumée, fuite) **et**
+> actionneurs (interrupteur, prise, lumière + variateur, volet/store, serrure,
+> porte de garage). Tu coches ce que tu exposes ; chaque choix = un accessoire
+> du bridge. Ce qui n'a pas d'équivalent HomeKit (énergie, loi d'eau…) est laissé
+> de côté ou approximé, et documenté.
 
 ---
 
@@ -100,15 +104,29 @@ présente la liste. Chaque capacité cochée devient un **accessoire du bridge**
 ```yaml
 exposed:
   - aid: 2
-    type: "temperature_sensor"
-    name: "Température ambiante"
+    type: "window_covering"
+    name: "Volet salon"
     device_url: "io://…/…"
-    state: "core:TemperatureState"
+    spec: {pos_state: "core:ClosureState", set: "setClosure",
+           open: "open", close: "close", stop: "stop"}
 ```
 
-Types reconnus actuellement : `temperature_sensor`, `temperature_setpoint`
-(consigne, lecture), `humidity_sensor`. Le contrôle (thermostat, boost ECS…)
-viendra en V2 sur le même principe (détection → choix).
+Le `spec` résout, pour CE device, les `states`/`commands` Overkiz à utiliser
+(rempli par la détection). Types reconnus :
+
+| Type | HomeKit | Sens |
+|---|---|---|
+| `temperature_sensor` / `temperature_setpoint` | TemperatureSensor | lecture |
+| `humidity_sensor` | HumiditySensor | lecture |
+| `contact_sensor`, `motion_sensor`, `occupancy_sensor`, `smoke_sensor`, `leak_sensor` | capteurs binaires | lecture |
+| `switch`, `outlet` | Switch / Outlet | **lecture + écriture** (on/off) |
+| `light` | Lightbulb (+ Brightness) | **lecture + écriture** |
+| `window_covering` | WindowCovering | **lecture + écriture** (position) |
+| `lock` | LockMechanism | **lecture + écriture** |
+| `garage` | GarageDoorOpener | **lecture + écriture** |
+
+> Ajouter un type = un détecteur dans `detect.py` + une classe d'accessoire
+> dans `devices.py`. Tout est piloté par les capacités, pas par modèle d'appareil.
 
 ### ⚠️ Changer la structure APRÈS appairage
 
@@ -231,15 +249,17 @@ Recharge la page pour actualiser ; un endpoint JSON est dispo sur
 
 ## Feuille de route
 
-- **V1** : install reproductible + `configure` + capteurs de température +
-  QR code + polling espacé + systemd. ✅ Validé Pi Zero W v1 / Trixie.
-- **V1.5 (actuel)** : passage en **bridge** (un accessoire par fonction →
-  rangeable par pièce).
-- **V2** : écriture — `Thermostat`/`HeaterCooler` (consigne + mode), `Switch`
-  boost ECS, sur la base du dump complet (states + commands). ⚠️ HomeKit n'a pas
-  de type « PAC pilotée par loi d'eau » : mapping à assumer et documenter.
-- **V3 (option)** : cache offline, healthcheck, procédure de nettoyage des
-  tuiles fantômes.
+- **V1** : install reproductible + capteurs de température + QR code + polling
+  espacé + systemd. ✅ Validé Pi Zero W v1 / Trixie.
+- **V1.5** : **bridge** (un accessoire par fonction → rangeable par pièce) +
+  détection auto + page de statut + i18n + mot de passe chiffré.
+- **V2 (actuel)** : **pont générique lecture + écriture** par capacité
+  (interrupteur, prise, lumière+variateur, volet, serrure, garage + capteurs).
+  Le mapping est piloté par `detect.py`/`devices.py`, extensible.
+- **À venir** : `Thermostat`/`HeaterCooler` (consigne + mode chauffe/arrêt) —
+  le mapping des modes nécessite les `commands` exactes du device (⚠️ HomeKit
+  n'a pas de type « PAC pilotée par loi d'eau »). Battery/énergie n'ont pas
+  d'équivalent HomeKit natif.
 
 ## Licence
 

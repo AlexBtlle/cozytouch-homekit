@@ -11,10 +11,14 @@ Data is read from the **Overkiz / Cozytouch** cloud API via
 [`pyoverkiz`](https://github.com/iMicknl/python-overkiz-api) and published to
 HomeKit via [HAP-python](https://github.com/ikalchev/HAP-python).
 
-> **Status — read-only, auto-detected.** `configure` detects your account's
-> capabilities (temperature/humidity sensors, setpoints…) and lets you tick
-> what you expose; each choice = one bridge accessory. Control (thermostat, DHW
-> boost) is planned for V2 on the same principle.
+> **Generic Overkiz → HomeKit bridge, auto-detected (read + write).**
+> `configure` queries your account and detects capabilities **by capability**
+> (from each device's `states`/`commands`, not by model): sensors (temperature,
+> humidity, contact, occupancy, motion, smoke, leak) **and** actuators (switch,
+> outlet, light + brightness, roller shutter, lock, garage door). You tick what
+> you expose; each choice = one bridge accessory. Things with no HomeKit
+> equivalent (energy, weather-compensation…) are left out or approximated, and
+> documented.
 
 ---
 
@@ -97,15 +101,29 @@ assignable to its own room). The result is stored in `config.yaml` under
 ```yaml
 exposed:
   - aid: 2
-    type: "temperature_sensor"
-    name: "Ambient temperature"
+    type: "window_covering"
+    name: "Living-room blind"
     device_url: "io://…/…"
-    state: "core:TemperatureState"
+    spec: {pos_state: "core:ClosureState", set: "setClosure",
+           open: "open", close: "close", stop: "stop"}
 ```
 
-Types currently recognized: `temperature_sensor`, `temperature_setpoint`
-(setpoint, read-only), `humidity_sensor`. Control (thermostat, DHW boost…) is
-coming in V2 on the same principle (detect → choose).
+The `spec` resolves, for THIS device, which Overkiz `states`/`commands` to use
+(filled in by detection). Recognized types:
+
+| Type | HomeKit | Direction |
+|---|---|---|
+| `temperature_sensor` / `temperature_setpoint` | TemperatureSensor | read |
+| `humidity_sensor` | HumiditySensor | read |
+| `contact_sensor`, `motion_sensor`, `occupancy_sensor`, `smoke_sensor`, `leak_sensor` | binary sensors | read |
+| `switch`, `outlet` | Switch / Outlet | **read + write** (on/off) |
+| `light` | Lightbulb (+ Brightness) | **read + write** |
+| `window_covering` | WindowCovering | **read + write** (position) |
+| `lock` | LockMechanism | **read + write** |
+| `garage` | GarageDoorOpener | **read + write** |
+
+> Adding a type = one detector in `detect.py` + one accessory class in
+> `devices.py`. Everything is capability-driven, not device-model-driven.
 
 ### ⚠️ Changing the structure AFTER pairing
 
@@ -226,14 +244,17 @@ Served internally by **aiohttp** (already pulled by `pyoverkiz`) and
 
 ## Roadmap
 
-- **V1**: reproducible install + `configure` + temperature sensors + QR code +
-  spaced polling + systemd. ✅ Validated on Pi Zero W v1 / Trixie.
-- **V1.5 (current)**: switch to a **bridge** (one accessory per function →
-  room-assignable) + auto-detection + status page + i18n (en/fr).
-- **V2**: writing — `Thermostat`/`HeaterCooler` (setpoint + mode), `Switch` for
-  DHW boost, based on the full dump (states + commands). ⚠️ HomeKit has no
-  "weather-compensated heat pump" type: mapping to assume and document.
-- **V3 (optional)**: offline cache, healthcheck, ghost-tile cleanup procedure.
+- **V1**: reproducible install + temperature sensors + QR code + spaced polling
+  + systemd. ✅ Validated on Pi Zero W v1 / Trixie.
+- **V1.5**: **bridge** (one accessory per function → room-assignable) +
+  auto-detection + status page + i18n (en/fr) + encrypted password.
+- **V2 (current)**: **generic read + write bridge** by capability (switch,
+  outlet, light + brightness, shutter, lock, garage + sensors). Mapping is
+  driven by `detect.py`/`devices.py`, extensible.
+- **Next**: `Thermostat`/`HeaterCooler` (setpoint + heat/off mode) — mode
+  mapping needs the device's exact `commands` (⚠️ HomeKit has no
+  "weather-compensated heat pump" type). Battery/energy have no native HomeKit
+  equivalent.
 
 ## License
 

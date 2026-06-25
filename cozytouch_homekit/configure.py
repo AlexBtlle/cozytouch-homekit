@@ -92,18 +92,18 @@ def _cap_key(device_url: str, state: str) -> str:
 
 def _select_capabilities(caps: list[Any], previous: list[dict[str, Any]]) -> list[Any]:
     """Checkbox sur les capacités détectées. Renvoie les Capability cochées."""
-    prev_keys = {_cap_key(e.get("device_url", ""), e.get("state", "")) for e in previous}
+    prev_keys = {k for e in previous if (k := _entry_key(e))}
 
     console.print(
         f"\n[green]✓[/] {len(caps)} capacité(s) détectée(s) sur ton compte."
     )
+    def _line(c):
+        extra = f"  ({c.summary})" if c.summary else ""
+        return f"[{c.category}] {c.name}{extra}"
+
     if _HAS_QUESTIONARY:
         choices = [
-            questionary.Choice(
-                title=f"[{c.category}] {c.name}   ({c.state} = {c.value})",
-                value=c,
-                checked=c.key in prev_keys,
-            )
+            questionary.Choice(title=_line(c), value=c, checked=c.key in prev_keys)
             for c in caps
         ]
         chosen = questionary.checkbox(
@@ -117,28 +117,39 @@ def _select_capabilities(caps: list[Any], previous: list[dict[str, Any]]) -> lis
     chosen = []
     for c in caps:
         default = "o" if c.key in prev_keys else "n"
-        ans = input(
-            f"  [{c.category}] {c.name} ({c.state}={c.value}) [{default}]: "
-        ).strip().lower() or default
+        ans = input(f"  {_line(c)} [{default}]: ").strip().lower() or default
         if ans.startswith("o") or ans.startswith("y"):
             chosen.append(c)
     return chosen
+
+
+def _entry_key(e: dict[str, Any]) -> str | None:
+    """Clé stable d'une entrée exposed (gère l'ancien format avec `state`)."""
+    if e.get("key"):
+        return e["key"]
+    st = (e.get("spec") or {}).get("state") or e.get("state")
+    return _cap_key(e.get("device_url", ""), st) if st else None
 
 
 def _capabilities_to_exposed(
     caps: list[Any], previous: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
     """Construit la liste `exposed`, en conservant AID et nom déjà attribués."""
-    prev_by_key = {_cap_key(e.get("device_url", ""), e.get("state", "")): e for e in previous}
+    prev_by_key: dict[str, dict[str, Any]] = {}
+    for e in previous:
+        k = _entry_key(e)
+        if k:
+            prev_by_key[k] = e
     exposed: list[dict[str, Any]] = []
     for c in caps:
         prev = prev_by_key.get(c.key)
         exposed.append({
+            "key": c.key,
             "aid": prev.get("aid") if prev else None,
             "type": c.type,
             "name": prev.get("name") if prev else c.name,
             "device_url": c.device_url,
-            "state": c.state,
+            "spec": c.spec,
         })
     assign_aids(exposed)
     return exposed

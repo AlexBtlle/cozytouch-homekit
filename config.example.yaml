@@ -24,24 +24,30 @@ cozytouch:
 # Accessoires exposés à HomeKit — NORMALEMENT généré par `configure`, qui
 # détecte automatiquement les capacités de ton compte et te les fait cocher.
 # Un accessoire (= une tuile, rangeable dans sa propre pièce) par entrée.
+#   key        : identifiant stable interne (préserve l'AID entre reconfig)
 #   aid        : identifiant HomeKit STABLE (>= 2 ; attribué automatiquement)
-#   type       : temperature_sensor | temperature_setpoint | humidity_sensor
+#   type       : temperature_sensor | humidity_sensor | contact_sensor |
+#                motion_sensor | occupancy_sensor | smoke_sensor | leak_sensor |
+#                switch | outlet | light | window_covering | lock | garage
 #   name       : libellé de la tuile (renommable dans Maison)
 #   device_url : device Overkiz source
-#   state      : nom du state Overkiz lu
+#   spec       : states/commands Overkiz résolus pour CE device (par la détection)
 #
-# Exemple RÉEL (Alféa Extensa AI Duo, firmware io:AtlanticPassAPC*) :
+# Exemples :
 exposed:
-  - aid: 2
+  - key: "io://1234-5678-9012/AAAA::core:TemperatureState"
+    aid: 2
     type: "temperature_sensor"
-    name: "Température ambiante"      # io:AtlanticPassAPCZoneTemperatureSensor
-    device_url: "io://1234-5678-9012/XXXXXXXX"
-    state: "core:TemperatureState"
-  - aid: 3
-    type: "temperature_sensor"
-    name: "Température extérieure"    # io:AtlanticPassAPCOutsideTemperatureSensor
-    device_url: "io://1234-5678-9012/XXXXXXXX"
-    state: "core:TemperatureState"
+    name: "Température ambiante"
+    device_url: "io://1234-5678-9012/AAAA"
+    spec: {state: "core:TemperatureState"}
+  - key: "io://1234-5678-9012/BBBB::window_covering"
+    aid: 3
+    type: "window_covering"
+    name: "Volet salon"
+    device_url: "io://1234-5678-9012/BBBB"
+    spec: {pos_state: "core:ClosureState", set: "setClosure",
+           open: "open", close: "close", stop: "stop"}
 
 # (Legacy) Ancien schéma features/sensors + device : ignoré dès que `exposed`
 # est présent. Conservé pour rétro-compatibilité.

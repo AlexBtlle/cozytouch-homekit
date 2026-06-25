@@ -113,6 +113,27 @@ class CozytouchClient:
                 result[name] = getattr(state, "value", None)
         return result
 
+    async def execute(
+        self, device_url: str, command_name: str, params: list[Any] | None = None
+    ) -> str:
+        """Envoie une commande Overkiz (écriture). Renvoie l'exec_id."""
+        from pyoverkiz.models import Command
+
+        client = await self._ensure_login()
+        cmd = Command(command_name, list(params or []))
+        try:
+            return await client.execute_command(device_url, cmd, "cozytouch-homekit")
+        except NotAuthenticatedException:
+            self._logged_in = False
+            await self.login()
+            return await client.execute_command(device_url, cmd, "cozytouch-homekit")
+        except (TooManyRequestsException, MaintenanceException) as exc:
+            raise TransientError(f"Commande throttlée ({command_name}) : {exc}") from exc
+        except Exception as exc:
+            raise TransientError(
+                f"Commande échouée ({command_name} @ {device_url}) : {exc}"
+            ) from exc
+
     async def close(self) -> None:
         if self._client is not None:
             try:
