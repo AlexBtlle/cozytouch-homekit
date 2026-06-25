@@ -16,7 +16,7 @@ HomeKit via [HAP-python](https://github.com/ikalchev/HAP-python).
 > (selon les `states`/`commands` de chaque device, pas par modèle) : capteurs
 > (température, humidité, contact, présence, mouvement, fumée, fuite) **et**
 > actionneurs (interrupteur, prise, lumière + variateur, volet/store, serrure,
-> porte de garage). Tu coches ce que tu exposes ; chaque choix = un accessoire
+> porte de garage, thermostat). Tu coches ce que tu exposes ; chaque choix = un accessoire
 > du bridge. Ce qui n'a pas d'équivalent HomeKit (énergie, loi d'eau…) est laissé
 > de côté ou approximé, et documenté.
 
@@ -124,6 +124,7 @@ Le `spec` résout, pour CE device, les `states`/`commands` Overkiz à utiliser
 | `window_covering` | WindowCovering | **lecture + écriture** (position) |
 | `lock` | LockMechanism | **lecture + écriture** |
 | `garage` | GarageDoorOpener | **lecture + écriture** |
+| `thermostat` | Thermostat | **lecture + écriture** (consigne ; mode verrouillé sur Chauffe) |
 
 > Ajouter un type = un détecteur dans `detect.py` + une classe d'accessoire
 > dans `devices.py`. Tout est piloté par les capacités, pas par modèle d'appareil.
@@ -254,12 +255,12 @@ Recharge la page pour actualiser ; un endpoint JSON est dispo sur
 - **V1.5** : **bridge** (un accessoire par fonction → rangeable par pièce) +
   détection auto + page de statut + i18n + mot de passe chiffré.
 - **V2 (actuel)** : **pont générique lecture + écriture** par capacité
-  (interrupteur, prise, lumière+variateur, volet, serrure, garage + capteurs).
-  Le mapping est piloté par `detect.py`/`devices.py`, extensible.
-- **À venir** : `Thermostat`/`HeaterCooler` (consigne + mode chauffe/arrêt) —
-  le mapping des modes nécessite les `commands` exactes du device (⚠️ HomeKit
-  n'a pas de type « PAC pilotée par loi d'eau »). Battery/énergie n'ont pas
-  d'équivalent HomeKit natif.
+  (interrupteur, prise, lumière+variateur, volet, serrure, garage, **thermostat**
+  + capteurs). Le mapping est piloté par `detect.py`/`devices.py`, extensible et
+  basé sur les `states`/`commands` (jamais sur un modèle d'appareil).
+- **À venir** : contrôle de **mode** du thermostat (off/auto) — les chaînes de
+  modes varient selon les firmwares, donc verrouillé sur « Chauffe » pour rester
+  générique et sûr. Batterie/énergie n'ont pas d'équivalent HomeKit natif.
 
 ## Licence
 

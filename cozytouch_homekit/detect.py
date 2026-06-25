@@ -156,7 +156,39 @@ def _detect_actuator(device, cmds, states, statevals) -> Capability | None:
                 "unlock": "unlock" if "unlock" in cmds else None}
         return cap("lock", "Serrure", spec)
 
-    # 4) Light
+    # 4) Thermostat / heating — any device with a settable target temperature.
+    set_target = _first(cmds, "setHeatingTargetTemperature", "setTargetTemperature",
+                        "setComfortHeatingTargetTemperature", "setComfortTargetTemperature",
+                        "setDerogatedTargetTemperature", "setThermostatSetpoint")
+    if not set_target:
+        set_target = next(
+            (c for c in sorted(cmds)
+             if c.lower().startswith("set") and "targettemperature" in c.lower()),
+            None,
+        )
+    if set_target:
+        target_state = _first(states, "core:HeatingTargetTemperatureState",
+                              "core:TargetTemperatureState",
+                              "core:ComfortHeatingTargetTemperatureState",
+                              "core:ComfortTargetTemperatureState",
+                              "core:DerogatedTargetTemperatureState",
+                              "core:WaterTargetTemperatureState")
+        if not target_state:
+            target_state = next(
+                (s for s in sorted(states) if "targettemperature" in s.lower()), None
+            )
+        if target_state:
+            spec = {"target_state": target_state, "set_target": set_target}
+            cur = _first(states, "core:TemperatureState", "core:RoomTemperatureState")
+            if cur:
+                spec["current_state"] = cur
+            mode = _first(states, "core:OperatingModeState", "core:HeatingOnOffState",
+                          "core:OnOffState", "io:PassAPCHeatingModeState")
+            if mode:
+                spec["mode_state"] = mode
+            return cap("thermostat", "Thermostat / chauffage", spec)
+
+    # 5) Light
     if has_onoff and ("light" in ui.lower() or "light" in widget.lower() or "light" in cname.lower()):
         spec = _onoff_spec(cmds, onoff_state)
         bstate = _first(states, "core:LightIntensityState", "core:IntensityState")
@@ -166,11 +198,11 @@ def _detect_actuator(device, cmds, states, statevals) -> Capability | None:
             spec["set_bright"] = "setIntensity"
         return cap("light", "Lumière", spec)
 
-    # 5) Outlet / plug
+    # 6) Outlet / plug
     if has_onoff and ("plug" in ui.lower() or "plug" in widget.lower() or "outlet" in cname.lower()):
         return cap("outlet", "Prise", _onoff_spec(cmds, onoff_state))
 
-    # 6) Generic switch (fallback)
+    # 7) Generic switch (fallback)
     if has_onoff:
         return cap("switch", "Interrupteur", _onoff_spec(cmds, onoff_state))
 
@@ -212,13 +244,19 @@ def _detect_device(device) -> list[Capability]:
 
     caps: list[Capability] = []
     actuator = _detect_actuator(device, cmds, states, statevals)
+    sensors = _detect_sensors(device, states, statevals)
     if actuator is not None:
         # enrich summary with the primary state value if any
-        primary = actuator.spec.get("state") or actuator.spec.get("pos_state")
+        primary = (actuator.spec.get("state") or actuator.spec.get("pos_state")
+                   or actuator.spec.get("target_state"))
         if primary:
             actuator.summary = f"{primary} = {statevals.get(primary)}"
         caps.append(actuator)
-    caps.extend(_detect_sensors(device, states, statevals))
+        # A thermostat already exposes the setpoint (writable) → drop the
+        # redundant read-only setpoint sensors for this device.
+        if actuator.type == "thermostat":
+            sensors = [s for s in sensors if s.type != "temperature_setpoint"]
+    caps.extend(sensors)
     return caps
 
 

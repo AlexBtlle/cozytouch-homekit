@@ -15,7 +15,7 @@ HomeKit via [HAP-python](https://github.com/ikalchev/HAP-python).
 > `configure` queries your account and detects capabilities **by capability**
 > (from each device's `states`/`commands`, not by model): sensors (temperature,
 > humidity, contact, occupancy, motion, smoke, leak) **and** actuators (switch,
-> outlet, light + brightness, roller shutter, lock, garage door). You tick what
+> outlet, light + brightness, roller shutter, lock, garage door, thermostat). You tick what
 > you expose; each choice = one bridge accessory. Things with no HomeKit
 > equivalent (energy, weather-compensation…) are left out or approximated, and
 > documented.
@@ -121,6 +121,7 @@ The `spec` resolves, for THIS device, which Overkiz `states`/`commands` to use
 | `window_covering` | WindowCovering | **read + write** (position) |
 | `lock` | LockMechanism | **read + write** |
 | `garage` | GarageDoorOpener | **read + write** |
+| `thermostat` | Thermostat | **read + write** (setpoint ; mode locked to Heat) |
 
 > Adding a type = one detector in `detect.py` + one accessory class in
 > `devices.py`. Everything is capability-driven, not device-model-driven.
@@ -249,12 +250,12 @@ Served internally by **aiohttp** (already pulled by `pyoverkiz`) and
 - **V1.5**: **bridge** (one accessory per function → room-assignable) +
   auto-detection + status page + i18n (en/fr) + encrypted password.
 - **V2 (current)**: **generic read + write bridge** by capability (switch,
-  outlet, light + brightness, shutter, lock, garage + sensors). Mapping is
-  driven by `detect.py`/`devices.py`, extensible.
-- **Next**: `Thermostat`/`HeaterCooler` (setpoint + heat/off mode) — mode
-  mapping needs the device's exact `commands` (⚠️ HomeKit has no
-  "weather-compensated heat pump" type). Battery/energy have no native HomeKit
-  equivalent.
+  outlet, light + brightness, shutter, lock, garage, **thermostat** + sensors).
+  Mapping is driven by `detect.py`/`devices.py`, extensible and based on
+  `states`/`commands` (never on a device model).
+- **Next**: thermostat **mode** control (off/auto) — mode strings vary by
+  firmware, so it is locked to *Heat* to stay generic and safe. Battery/energy
+  have no native HomeKit equivalent.
 
 ## License
 

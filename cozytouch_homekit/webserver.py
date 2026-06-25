@@ -136,7 +136,10 @@ LOCALES = {
         "c_name": "Name", "c_type": "Type", "c_value": "Value", "c_state": "State",
         "ok": "ok", "unavailable": "unavailable", "none": "No accessory exposed.",
         "footer": "Generated at {t} · reload the page to refresh",
-        "temperature": "temperature", "humidity": "humidity",
+        "temperature": "temperature", "humidity": "humidity", "contact": "contact",
+        "motion": "motion", "occupancy": "occupancy", "smoke": "smoke", "leak": "leak",
+        "switch": "switch", "outlet": "outlet", "light": "light", "cover": "shutter",
+        "lock": "lock", "garage": "garage", "thermostat": "thermostat",
     },
     "fr": {
         "lang": "fr", "title_suffix": "statut",
@@ -155,7 +158,10 @@ LOCALES = {
         "c_name": "Nom", "c_type": "Type", "c_value": "Valeur", "c_state": "État",
         "ok": "ok", "unavailable": "indispo", "none": "Aucun accessoire exposé.",
         "footer": "Généré à {t} · rechargez la page pour actualiser",
-        "temperature": "température", "humidity": "humidité",
+        "temperature": "température", "humidity": "humidité", "contact": "contact",
+        "motion": "mouvement", "occupancy": "présence", "smoke": "fumée", "leak": "fuite",
+        "switch": "interrupteur", "outlet": "prise", "light": "lumière", "cover": "volet",
+        "lock": "serrure", "garage": "garage", "thermostat": "thermostat",
     },
 }
 

@@ -28,7 +28,8 @@ cozytouch:
 #   aid        : identifiant HomeKit STABLE (>= 2 ; attribué automatiquement)
 #   type       : temperature_sensor | humidity_sensor | contact_sensor |
 #                motion_sensor | occupancy_sensor | smoke_sensor | leak_sensor |
-#                switch | outlet | light | window_covering | lock | garage
+#                switch | outlet | light | window_covering | lock | garage |
+#                thermostat
 #   name       : libellé de la tuile (renommable dans Maison)
 #   device_url : device Overkiz source
 #   spec       : states/commands Overkiz résolus pour CE device (par la détection)

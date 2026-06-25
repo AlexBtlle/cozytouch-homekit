@@ -435,6 +435,74 @@ class GarageDoor(BaseAccessory):
         return s
 
 
+class Thermostat(BaseAccessory):
+    """Generic heating thermostat: adjustable target temperature.
+
+    Works for any Overkiz device that has a settable target-temperature command
+    + a target-temperature state. To stay generic AND safe, the mode is locked
+    to *Heat* (no fragile guessing of off/auto/comfort mode strings, which vary
+    by firmware). CurrentTemperature uses a same-device measure if present, else
+    falls back to the target value.
+    """
+
+    category = _cat("CATEGORY_THERMOSTAT")
+    kind = "thermostat"
+    writable = True
+
+    def __init__(self, driver, controller, name, device_url, spec, aid):
+        super().__init__(driver, controller, name, device_url, spec, aid)
+        self._min = float(spec.get("min", 7))
+        self._max = float(spec.get("max", 35))
+        step = float(spec.get("step", 0.5))
+
+        svc = self.add_preload_service("Thermostat")
+        self._cur = svc.get_characteristic("CurrentTemperature")
+        self._tgt = svc.get_characteristic("TargetTemperature")
+        self._cstate = svc.get_characteristic("CurrentHeatingCoolingState")
+        self._tstate = svc.get_characteristic("TargetHeatingCoolingState")
+        # Lock target mode to Heat (generic-safe). Set the value to Heat first
+        # so the old default (0=Off) isn't re-validated against the new range.
+        self._tstate.set_value(1)
+        self._tstate.override_properties(valid_values={"Heat": 1})
+        self._tgt.override_properties(
+            properties={"minValue": self._min, "maxValue": self._max, "minStep": step}
+        )
+        svc.configure_char("TargetTemperature", setter_callback=self._set_target)
+        svc.get_characteristic("TemperatureDisplayUnits").set_value(0)  # Celsius
+
+    def _set_target(self, value: float):
+        cmd = self.spec.get("set_target")
+        if cmd:
+            self._send(cmd, [round(float(value), 1)])
+
+    def update(self, states_by_url):
+        st = states_by_url.get(self.device_url, {})
+        tgt = _num(st.get(self.spec.get("target_state")))
+        cur_key = self.spec.get("current_state")
+        cur = _num(st.get(cur_key)) if cur_key else None
+        if tgt is None and cur is None:
+            self.set_unavailable()
+            return
+        self._available = True
+        if tgt is not None:
+            self._tgt.set_value(max(self._min, min(self._max, tgt)))
+            self._last = tgt
+        shown = cur if cur is not None else tgt
+        if shown is not None:
+            self._cur.set_value(max(TEMP_MIN, min(TEMP_MAX, shown)))
+        # CurrentHeatingCoolingState: off only if a mode state clearly says so.
+        mode = st.get(self.spec.get("mode_state")) if self.spec.get("mode_state") else None
+        off = str(mode).lower() in ("off", "stop", "frostprotection", "absence", "no")
+        self._cstate.set_value(0 if (mode is not None and off) else 1)
+        self._tstate.set_value(1)
+
+    def status(self):
+        s = super().status()
+        s["unit"] = "°C"
+        s["value"] = self._last if self._last is not None else "—"
+        return s
+
+
 # type d'entrée `exposed` → classe d'accessoire.
 ACCESSORY_BY_TYPE = {
     "temperature_sensor": TemperatureSensor,
@@ -451,4 +519,5 @@ ACCESSORY_BY_TYPE = {
     "window_covering": WindowCovering,
     "lock": Lock,
     "garage": GarageDoor,
+    "thermostat": Thermostat,
 }
