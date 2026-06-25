@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# install.sh — installation reproductible sur Raspberry Pi OS (ARMv6, Pi Zero W)
+# install.sh — reproducible install on Raspberry Pi OS (ARMv6, Pi Zero W)
 #
-# Idempotent : ré-exécutable sans casse. Une seule commande :
+# Idempotent: safe to re-run. One single command:
 #     ./install.sh
 #
-# Étapes :
-#   1) deps système (apt)
-#   2) venv Python
-#   3) pip install -r requirements.txt (via piwheels, wheels précompilées)
-#   4) configure (identifiants Cozytouch + choix des fonctions)
-#   5) service systemd (install + activation)
-#   6) 1er démarrage → QR code d'appairage
+# Steps:
+#   1) system deps (apt)
+#   2) Python venv
+#   3) pip install -r requirements.txt (via piwheels, prebuilt wheels)
+#   4) configure (Cozytouch credentials + feature selection)
+#   5) systemd service (install + enable)
+#   6) first start → pairing QR code
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -25,65 +25,65 @@ bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 info()  { printf '\033[36m[install]\033[0m %s\n' "$*"; }
 warn()  { printf '\033[33m[install]\033[0m %s\n' "$*"; }
 
-# ── 0. Garde-fous ────────────────────────────────────────────────────────────
+# ── 0. Guards ────────────────────────────────────────────────────────────────
 if [[ ! -f /etc/rpi-issue && -z "${ALLOW_NON_RPI:-}" ]]; then
-  warn "Ce système ne semble pas être Raspberry Pi OS."
-  warn "piwheels (wheels ARMv6 précompilées) n'est actif que sur Raspberry Pi OS."
-  warn "Pour forcer quand même : ALLOW_NON_RPI=1 ./install.sh"
+  warn "This system does not look like Raspberry Pi OS."
+  warn "piwheels (prebuilt ARMv6 wheels) is only active on Raspberry Pi OS."
+  warn "To force anyway: ALLOW_NON_RPI=1 ./install.sh"
   exit 1
 fi
 
-# ── 1. Dépendances système ───────────────────────────────────────────────────
-bold "1) Dépendances système (apt)"
+# ── 1. System dependencies ───────────────────────────────────────────────────
+bold "1) System dependencies (apt)"
 SUDO=""
 if [[ "$(id -u)" -ne 0 ]]; then SUDO="sudo"; fi
 $SUDO apt-get update
-# python3-cryptography / python3-zeroconf : fournis PRÉCOMPILÉS par Debian
-#   (Rust/C déjà compilés côté serveur). Indispensable sur ARMv6 où piwheels
-#   n'a PAS de wheel pour cryptography (paquet Rust) ni pour les dernières
-#   versions de zeroconf. On les rend visibles au venv via --system-site-packages
-#   (étape 2) au lieu de les recompiler sur la carte (Rust = des heures + OOM).
+# python3-cryptography / python3-zeroconf: shipped PREBUILT by Debian (Rust/C
+#   already compiled on their build farm). Required on ARMv6 where piwheels has
+#   NO wheel for cryptography (a Rust package) nor for the latest zeroconf
+#   versions. We make them visible to the venv via --system-site-packages
+#   (step 2) instead of recompiling on the board (Rust = hours + OOM).
 $SUDO apt-get install -y \
   python3 python3-venv python3-pip python3-dev \
   build-essential libffi-dev \
   libavahi-compat-libdnssd-dev \
   python3-cryptography python3-zeroconf
 
-# ── 2. Environnement virtuel ─────────────────────────────────────────────────
-bold "2) Environnement virtuel Python"
-# Le venv DOIT voir les paquets système (cryptography, zeroconf) → flag
-# --system-site-packages, qui ne peut être posé qu'à la CRÉATION du venv.
+# ── 2. Virtual environment ───────────────────────────────────────────────────
+bold "2) Python virtual environment"
+# The venv MUST see the system packages (cryptography, zeroconf) → the
+# --system-site-packages flag, which can only be set when CREATING the venv.
 needs_recreate=0
 if [[ ! -d "${VENV_DIR}" ]]; then
   needs_recreate=1
 elif ! grep -q '^include-system-site-packages = true' "${VENV_DIR}/pyvenv.cfg" 2>/dev/null; then
-  warn "venv existant sans accès aux paquets système → recréation."
+  warn "Existing venv without access to system packages → recreating."
   rm -rf "${VENV_DIR}"
   needs_recreate=1
 fi
 if [[ "${needs_recreate}" -eq 1 ]]; then
   python3 -m venv --system-site-packages "${VENV_DIR}"
-  info "venv créé (--system-site-packages) : ${VENV_DIR}"
+  info "venv created (--system-site-packages): ${VENV_DIR}"
 else
-  info "venv déjà présent (avec paquets système) : ${VENV_DIR}"
+  info "venv already present (with system packages): ${VENV_DIR}"
 fi
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
 python -m pip install --upgrade pip wheel
 
 # ── 3. Requirements (via piwheels) ───────────────────────────────────────────
-bold "3) Installation des dépendances Python (piwheels)"
-# Sur Raspberry Pi OS, piwheels est déjà l'index par défaut (/etc/pip.conf).
-# On l'ajoute explicitement en extra-index pour les autres cas.
+bold "3) Installing Python dependencies (piwheels)"
+# On Raspberry Pi OS, piwheels is already the default index (/etc/pip.conf).
+# We add it explicitly as an extra index for other cases.
 PIP_EXTRA="https://www.piwheels.org/simple"
-info "Installation depuis requirements.txt (extra-index : piwheels)…"
+info "Installing from requirements.txt (extra-index: piwheels)…"
 pip install --extra-index-url "${PIP_EXTRA}" -r "${PROJECT_DIR}/requirements.txt"
 
 # ── 4. Configuration ─────────────────────────────────────────────────────────
-bold "4) Configuration (identifiants Cozytouch + choix des fonctions)"
+bold "4) Configuration (Cozytouch credentials + feature selection)"
 if [[ -f "${PROJECT_DIR}/config.yaml" ]]; then
-  info "config.yaml existe déjà — relancez 'configure' pour le modifier."
-  read -r -p "Reconfigurer maintenant ? [o/N] " ans
+  info "config.yaml already exists — run 'configure' to change it."
+  read -r -p "Reconfigure now? [y/N] " ans
   if [[ "${ans:-N}" =~ ^[oOyY]$ ]]; then
     python -m cozytouch_homekit configure
   fi
@@ -91,22 +91,22 @@ else
   python -m cozytouch_homekit configure
 fi
 
-# ── 4bis. Propriété des fichiers ─────────────────────────────────────────────
-# install.sh tourne sous sudo (root) ; le service systemd tourne en tant que
-# RUN_USER. Tout ce que root a créé (venv, config.yaml) doit appartenir à
-# RUN_USER, sinon le service ne peut ni lire config.yaml (0600 root) ni écrire
-# accessory.state dans le dossier.
+# ── 4b. File ownership ───────────────────────────────────────────────────────
+# install.sh runs under sudo (root); the systemd service runs as RUN_USER.
+# Everything root created (venv, config.yaml) must belong to RUN_USER, otherwise
+# the service can neither read config.yaml (0600 root) nor write accessory.state
+# in the directory.
 if [[ "${RUN_USER}" != "root" ]]; then
   $SUDO chown -R "${RUN_USER}:${RUN_USER}" "${VENV_DIR}" 2>/dev/null || true
   [[ -f "${PROJECT_DIR}/config.yaml" ]] && \
     $SUDO chown "${RUN_USER}:${RUN_USER}" "${PROJECT_DIR}/config.yaml"
-  # Le dossier projet doit être inscriptible par RUN_USER (accessory.state).
+  # The project dir must be writable by RUN_USER (accessory.state).
   $SUDO chown "${RUN_USER}:${RUN_USER}" "${PROJECT_DIR}" 2>/dev/null || true
-  info "Propriété des artefacts attribuée à ${RUN_USER}."
+  info "Artifact ownership assigned to ${RUN_USER}."
 fi
 
-# ── 5. Service systemd ───────────────────────────────────────────────────────
-bold "5) Service systemd"
+# ── 5. systemd service ───────────────────────────────────────────────────────
+bold "5) systemd service"
 TMP_UNIT="$(mktemp)"
 sed -e "s|__USER__|${RUN_USER}|g" \
     -e "s|__WORKDIR__|${PROJECT_DIR}|g" \
@@ -115,20 +115,20 @@ $SUDO cp "${TMP_UNIT}" "${SERVICE_FILE}"
 rm -f "${TMP_UNIT}"
 $SUDO systemctl daemon-reload
 $SUDO systemctl enable "${SERVICE_NAME}"
-info "Service installé et activé : ${SERVICE_FILE}"
+info "Service installed and enabled: ${SERVICE_FILE}"
 
-# ── 6. Premier démarrage / QR code ───────────────────────────────────────────
-bold "6) Appairage"
+# ── 6. First start / QR code ─────────────────────────────────────────────────
+bold "6) Pairing"
 echo
-info "Pour appairer, démarrez le service et regardez le QR code dans les logs :"
+info "To pair, start the service and watch the QR code in the logs:"
 echo "    sudo systemctl restart ${SERVICE_NAME}"
 echo "    journalctl -u ${SERVICE_NAME} -f"
 echo
-warn "ARMv6 (Pi Zero) : l'appairage peut prendre plusieurs minutes. Patience."
+warn "ARMv6 (Pi Zero): pairing can take several minutes. Be patient."
 echo
-read -r -p "Démarrer le service et afficher les logs maintenant ? [O/n] " go
-if [[ ! "${go:-O}" =~ ^[nN]$ ]]; then
+read -r -p "Start the service and show the logs now? [Y/n] " go
+if [[ ! "${go:-Y}" =~ ^[nN]$ ]]; then
   $SUDO systemctl restart "${SERVICE_NAME}"
   exec $SUDO journalctl -u "${SERVICE_NAME}" -f
 fi
-bold "Installation terminée."
+bold "Installation complete."

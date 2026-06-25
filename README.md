@@ -1,5 +1,7 @@
 # cozytouch-homekit
 
+**🇫🇷 Français** · [🇬🇧 English](README.en.md)
+
 Exposer une PAC **Atlantic Alféa Extensa AI Duo** (ou autre appareil Atlantic
 piloté par **Cozytouch**) dans **Apple HomeKit**, en local, sur un
 **Raspberry Pi Zero W**, via un **bridge HAP** (un accessoire par fonction,

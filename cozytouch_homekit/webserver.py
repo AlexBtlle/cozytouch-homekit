@@ -1,17 +1,17 @@
-"""Mini page web de statut (port 8080 par défaut).
+"""Mini status web page (default port 8080).
 
-Sert, sur le LAN, un tableau de bord :
-  - appairage HomeKit (QR + PIN si non appairé, sinon « appairé ») ;
-  - état du Pi (hostname, IP, température CPU, uptime, charge, RAM) ;
-  - état Overkiz (connecté, dernière lecture, dernière erreur, intervalle) ;
-  - accessoires exposés et leurs valeurs courantes.
+Serves a small LAN dashboard:
+  - HomeKit pairing (QR + PIN, always shown);
+  - Pi status (hostname, IP, CPU temperature, uptime, load, RAM);
+  - Overkiz status (connected, last read, last error, polling interval);
+  - exposed accessories and their current values.
 
-Tourne dans le MÊME event loop que le bridge HAP (aiohttp, fourni par
-pyoverkiz → pas de dépendance supplémentaire). `render_html()` est une fonction
-pure, testable sans serveur.
+Runs in the SAME event loop as the HAP bridge (aiohttp, already pulled by
+pyoverkiz → no extra dependency). `render_html()` is a pure function, testable
+without a server. Language is driven by the `language` config key (en/fr).
 
-⚠️ La page affiche le PIN d'appairage et des infos système : à n'exposer que sur
-un réseau de confiance (elle n'expose JAMAIS le mot de passe Cozytouch).
+⚠️ The page shows the pairing PIN and system info: expose it on a trusted
+network only (it NEVER shows the Cozytouch password).
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from typing import Any
 _LOGGER = logging.getLogger(__name__)
 
 
-# ── Infos système (sans dépendance, cible Linux/Raspberry Pi OS) ─────────────
+# ── System info (dependency-free, Linux / Raspberry Pi OS target) ────────────
 def _read(path: str) -> str | None:
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -55,7 +55,7 @@ def uptime_str() -> str | None:
     mins = rem // 60
     parts = []
     if days:
-        parts.append(f"{days}j")
+        parts.append(f"{days}d")
     if hours or days:
         parts.append(f"{hours}h")
     parts.append(f"{mins}min")
@@ -76,7 +76,7 @@ def mem_str() -> str | None:
     if not total:
         return None
     used = total - (avail or 0)
-    return f"{used // 1024} / {total // 1024} Mo"
+    return f"{used // 1024} / {total // 1024} MB"
 
 
 def load_str() -> str | None:
@@ -100,7 +100,7 @@ def local_ip() -> str:
 
 
 def _qr_svg(uri: str) -> str | None:
-    """SVG inline du QR d'appairage (via pyqrcode). None si indispo."""
+    """Inline SVG of the pairing QR (via pyqrcode). None if unavailable."""
     try:
         import io
 
@@ -109,25 +109,76 @@ def _qr_svg(uri: str) -> str | None:
         buf = io.BytesIO()
         pyqrcode.create(uri).svg(buf, scale=5, quiet_zone=2)
         svg = buf.getvalue().decode("utf-8")
-        # Retirer le prologue XML pour un inline propre dans le HTML.
+        # Strip the XML prolog for clean inlining in HTML.
         if svg.startswith("<?xml"):
             svg = svg.split("?>", 1)[-1].lstrip()
         return svg
-    except Exception:  # noqa: BLE001 — le QR est un bonus
+    except Exception:  # noqa: BLE001 — the QR is a bonus
         return None
 
 
-# ── Rendu HTML (fonction pure) ───────────────────────────────────────────────
+# ── i18n ─────────────────────────────────────────────────────────────────────
+LOCALES = {
+    "en": {
+        "lang": "en", "title_suffix": "status",
+        "homekit_pairing": "HomeKit pairing",
+        "paired": "✓ Paired",
+        "repair_note": "To re-pair: remove the accessory in the Home app, then re-scan.",
+        "not_paired": "Not paired — scan the QR code in the Home app",
+        "pin": "PIN code", "hap_port": "HAP port",
+        "raspberry_pi": "Raspberry Pi",
+        "hostname": "Hostname", "local_ip": "Local IP", "cpu_temp": "CPU temperature",
+        "uptime": "Uptime", "load": "Load", "ram_used": "RAM used",
+        "overkiz": "Overkiz / Cozytouch", "state": "State",
+        "connected": "connected", "disconnected": "disconnected",
+        "last_read": "Last read", "interval": "Interval", "last_error": "Last error",
+        "exposed": "Exposed accessories",
+        "c_name": "Name", "c_type": "Type", "c_value": "Value", "c_state": "State",
+        "ok": "ok", "unavailable": "unavailable", "none": "No accessory exposed.",
+        "footer": "Generated at {t} · reload the page to refresh",
+        "temperature": "temperature", "humidity": "humidity",
+    },
+    "fr": {
+        "lang": "fr", "title_suffix": "statut",
+        "homekit_pairing": "Appairage HomeKit",
+        "paired": "✓ Appairé",
+        "repair_note": "Pour ré-appairer : retirez l'accessoire dans Maison, puis re-scannez.",
+        "not_paired": "Non appairé — scannez le QR dans l'app Maison",
+        "pin": "Code PIN", "hap_port": "Port HAP",
+        "raspberry_pi": "Raspberry Pi",
+        "hostname": "Hostname", "local_ip": "IP locale", "cpu_temp": "Température CPU",
+        "uptime": "Uptime", "load": "Charge", "ram_used": "RAM utilisée",
+        "overkiz": "Overkiz / Cozytouch", "state": "État",
+        "connected": "connecté", "disconnected": "déconnecté",
+        "last_read": "Dernière lecture", "interval": "Intervalle", "last_error": "Dernière erreur",
+        "exposed": "Accessoires exposés",
+        "c_name": "Nom", "c_type": "Type", "c_value": "Valeur", "c_state": "État",
+        "ok": "ok", "unavailable": "indispo", "none": "Aucun accessoire exposé.",
+        "footer": "Généré à {t} · rechargez la page pour actualiser",
+        "temperature": "température", "humidity": "humidité",
+    },
+}
+
+
+def _locale(cfg: dict[str, Any]) -> dict[str, str]:
+    lang = str(cfg.get("language", "en")).lower()
+    return LOCALES.get(lang, LOCALES["en"])
+
+
+# ── HTML rendering (pure function) ───────────────────────────────────────────
 def _fmt_dt(dt: datetime | None) -> str:
     return dt.strftime("%H:%M:%S") if dt else "—"
 
 
 def render_html(bridge: Any, cfg: dict[str, Any]) -> str:
+    L = _locale(cfg)
     name = html.escape(cfg["homekit"]["name"])
-    paired = bool(getattr(getattr(bridge, "driver", None), "state", None) and bridge.driver.state.paired)
+    paired = bool(
+        getattr(getattr(bridge, "driver", None), "state", None)
+        and bridge.driver.state.paired
+    )
 
-    # Carte HomeKit : on affiche TOUJOURS le QR + PIN (référence : projet caméra),
-    # avec le badge d'état d'appairage.
+    # HomeKit card: QR + PIN always shown, with the pairing status badge.
     pin = "—"
     try:
         pin = bridge.driver.state.pincode.decode()
@@ -140,27 +191,32 @@ def render_html(bridge: Any, cfg: dict[str, Any]) -> str:
         pass
     if paired:
         status_line = (
-            '<p class="ok">✓ Appairé</p>'
-            '<p class="muted">Pour ré-appairer : retirez l\'accessoire dans Maison, '
-            'puis re-scannez.</p>'
+            f'<p class="ok">{L["paired"]}</p>'
+            f'<p class="muted">{L["repair_note"]}</p>'
         )
     else:
-        status_line = '<p class="warn">Non appairé — scannez le QR dans l\'app Maison</p>'
+        status_line = f'<p class="warn">{L["not_paired"]}</p>'
     homekit_block = (
         status_line
         + f'<div class="qr">{qr}</div>'
-        + f'<p>Code PIN : <code>{html.escape(pin)}</code></p>'
+        + f'<p>{L["pin"]} : <code>{html.escape(pin)}</code></p>'
     )
 
-    # Carte Overkiz.
+    # Overkiz card.
     connected = getattr(bridge, "connected", False)
     last_ok = getattr(bridge, "last_poll_ok", None)
     last_err = getattr(bridge, "last_error", None)
     interval = cfg["polling"]["interval"]
-    cz_state = '<span class="ok">connecté</span>' if connected else '<span class="warn">déconnecté</span>'
-    err_row = f"<tr><td>Dernière erreur</td><td>{html.escape(str(last_err))}</td></tr>" if last_err else ""
+    cz_state = (
+        f'<span class="ok">{L["connected"]}</span>' if connected
+        else f'<span class="warn">{L["disconnected"]}</span>'
+    )
+    err_row = (
+        f'<tr><td>{L["last_error"]}</td><td>{html.escape(str(last_err))}</td></tr>'
+        if last_err else ""
+    )
 
-    # Accessoires.
+    # Accessories.
     rows = ""
     for comp in getattr(bridge, "_components", []):
         try:
@@ -169,21 +225,26 @@ def render_html(bridge: Any, cfg: dict[str, Any]) -> str:
             continue
         avail = st.get("available")
         val = st.get("value")
-        val_txt = f'{val} {st.get("unit","")}' if avail and val is not None else "—"
-        badge = '<span class="ok">ok</span>' if avail else '<span class="warn">indispo</span>'
+        val_txt = f'{val} {st.get("unit", "")}' if avail and val is not None else "—"
+        badge = (
+            f'<span class="ok">{L["ok"]}</span>' if avail
+            else f'<span class="warn">{L["unavailable"]}</span>'
+        )
+        kind = L.get(st.get("kind", ""), st.get("kind", ""))
         rows += (
             f"<tr><td>{html.escape(str(st.get('name')))}</td>"
-            f"<td>{html.escape(str(st.get('kind','')))}</td>"
+            f"<td>{html.escape(str(kind))}</td>"
             f"<td>{html.escape(val_txt)}</td><td>{badge}</td></tr>"
         )
     if not rows:
-        rows = '<tr><td colspan="4">Aucun accessoire exposé.</td></tr>'
+        rows = f'<tr><td colspan="4">{L["none"]}</td></tr>'
 
+    cpu = cpu_temp_c()
     return f"""<!doctype html>
-<html lang="fr"><head>
+<html lang="{L['lang']}"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{name} — statut</title>
+<title>{name} — {L['title_suffix']}</title>
 <style>
  :root {{ color-scheme: light dark; }}
  body {{ font-family: system-ui, sans-serif; margin: 0; padding: 1rem;
@@ -212,45 +273,45 @@ def render_html(bridge: Any, cfg: dict[str, Any]) -> str:
 <h1>{name}</h1>
 <div class="grid">
   <div class="card">
-    <h2>Appairage HomeKit</h2>
+    <h2>{L['homekit_pairing']}</h2>
     {homekit_block}
-    <table><tr><td>Port HAP</td><td>{cfg['homekit']['port']}</td></tr></table>
+    <table><tr><td>{L['hap_port']}</td><td>{cfg['homekit']['port']}</td></tr></table>
   </div>
   <div class="card">
-    <h2>Raspberry Pi</h2>
+    <h2>{L['raspberry_pi']}</h2>
     <table>
-      <tr><td>Hostname</td><td>{html.escape(socket.gethostname())}</td></tr>
-      <tr><td>IP locale</td><td>{html.escape(local_ip())}</td></tr>
-      <tr><td>Température CPU</td><td>{cpu_temp_c() if cpu_temp_c() is not None else '—'} °C</td></tr>
-      <tr><td>Uptime</td><td>{uptime_str() or '—'}</td></tr>
-      <tr><td>Charge</td><td>{load_str() or '—'}</td></tr>
-      <tr><td>RAM utilisée</td><td>{mem_str() or '—'}</td></tr>
+      <tr><td>{L['hostname']}</td><td>{html.escape(socket.gethostname())}</td></tr>
+      <tr><td>{L['local_ip']}</td><td>{html.escape(local_ip())}</td></tr>
+      <tr><td>{L['cpu_temp']}</td><td>{cpu if cpu is not None else '—'} °C</td></tr>
+      <tr><td>{L['uptime']}</td><td>{uptime_str() or '—'}</td></tr>
+      <tr><td>{L['load']}</td><td>{load_str() or '—'}</td></tr>
+      <tr><td>{L['ram_used']}</td><td>{mem_str() or '—'}</td></tr>
     </table>
   </div>
   <div class="card">
-    <h2>Overkiz / Cozytouch</h2>
+    <h2>{L['overkiz']}</h2>
     <table>
-      <tr><td>État</td><td>{cz_state}</td></tr>
-      <tr><td>Dernière lecture</td><td>{_fmt_dt(last_ok)}</td></tr>
-      <tr><td>Intervalle</td><td>{interval} s</td></tr>
+      <tr><td>{L['state']}</td><td>{cz_state}</td></tr>
+      <tr><td>{L['last_read']}</td><td>{_fmt_dt(last_ok)}</td></tr>
+      <tr><td>{L['interval']}</td><td>{interval} s</td></tr>
       {err_row}
     </table>
   </div>
   <div class="card" style="grid-column:1/-1">
-    <h2>Accessoires exposés</h2>
+    <h2>{L['exposed']}</h2>
     <table>
-      <tr><td>Nom</td><td>Type</td><td>Valeur</td><td>État</td></tr>
+      <tr><td>{L['c_name']}</td><td>{L['c_type']}</td><td>{L['c_value']}</td><td>{L['c_state']}</td></tr>
       {rows}
     </table>
   </div>
 </div>
-<footer>Généré à {_fmt_dt(datetime.now())} · rechargez la page pour actualiser</footer>
+<footer>{L['footer'].format(t=_fmt_dt(datetime.now()))}</footer>
 </body></html>"""
 
 
-# ── Serveur aiohttp ──────────────────────────────────────────────────────────
+# ── aiohttp server ───────────────────────────────────────────────────────────
 class StatusServer:
-    """Petit serveur aiohttp servant la page de statut, sur la loop courante."""
+    """Small aiohttp server serving the status page, on the current loop."""
 
     def __init__(self, bridge: Any, cfg: dict[str, Any]):
         self._bridge = bridge
@@ -294,7 +355,7 @@ class StatusServer:
         await self._runner.setup()
         site = web.TCPSite(self._runner, host, port)
         await site.start()
-        _LOGGER.info("Page de statut : http://%s:%s/", local_ip(), port)
+        _LOGGER.info("Status page: http://%s:%s/", local_ip(), port)
 
     async def stop(self) -> None:
         if self._runner is not None:

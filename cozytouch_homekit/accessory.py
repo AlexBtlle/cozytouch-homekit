@@ -123,7 +123,7 @@ class _SensorAccessory(Accessory):
 
 
 class TemperatureSensorAccessory(_SensorAccessory):
-    kind = "température"
+    kind = "temperature"
     unit = "°C"
 
     def __init__(self, driver, name, device_url, state_name, aid):
@@ -154,7 +154,7 @@ class TemperatureSensorAccessory(_SensorAccessory):
 
 
 class HumiditySensorAccessory(_SensorAccessory):
-    kind = "humidité"
+    kind = "humidity"
     unit = "%"
 
     def __init__(self, driver, name, device_url, state_name, aid):

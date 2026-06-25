@@ -27,6 +27,8 @@ FEATURE_ORDER = [
 IMPLEMENTED_FEATURES = {"temp_ambiante", "temp_exterieure", "temp_ecs"}
 
 DEFAULT_CONFIG: dict[str, Any] = {
+    # Langue de l'interface (page web) : "en" ou "fr". / UI language.
+    "language": "en",
     "cozytouch": {
         "username": "",
         "password": "",

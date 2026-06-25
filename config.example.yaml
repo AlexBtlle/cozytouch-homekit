@@ -8,6 +8,9 @@
 # Ce modèle documente toutes les clés disponibles.
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Langue de l'interface (page web) : "en" ou "fr". / UI language: "en" or "fr".
+language: "en"
+
 # Identifiants du compte Cozytouch (cloud Atlantic).
 cozytouch:
   username: "votre.email@example.com"
