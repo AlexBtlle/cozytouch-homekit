@@ -203,6 +203,13 @@ class CozytouchBridge(Bridge):
 
     async def _poll_once(self) -> None:
         assert self._client is not None
+        # Forcer la passerelle à rafraîchir avant de lire (sinon get_state peut
+        # renvoyer des valeurs périmées). Best-effort : si throttlé, on lit
+        # quand même le cache.
+        try:
+            await self._client.refresh()
+        except TransientError as exc:
+            _LOGGER.debug("refresh_states ignoré : %s", exc)
         states_by_url: dict[str, dict[str, Any]] = {}
         for url in self._device_urls:
             states_by_url[url] = await self._client.read_states(url)

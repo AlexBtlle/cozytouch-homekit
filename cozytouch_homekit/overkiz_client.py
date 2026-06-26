@@ -113,6 +113,25 @@ class CozytouchClient:
                 result[name] = getattr(state, "value", None)
         return result
 
+    async def refresh(self) -> None:
+        """Demande à la passerelle de rafraîchir ses states.
+
+        Sans ça, `get_state` renvoie la dernière valeur connue du cloud, qui peut
+        être périmée (la passerelle ne pousse pas toujours, surtout pour des
+        sondes peu bavardes comme la température extérieure).
+        """
+        client = await self._ensure_login()
+        try:
+            await client.refresh_states()
+        except NotAuthenticatedException:
+            self._logged_in = False
+            await self.login()
+            await client.refresh_states()
+        except (TooManyRequestsException, MaintenanceException) as exc:
+            raise TransientError(f"refresh_states throttlé : {exc}") from exc
+        except Exception as exc:
+            raise TransientError(f"refresh_states échoué : {exc}") from exc
+
     async def execute(
         self, device_url: str, command_name: str, params: list[Any] | None = None
     ) -> str:
