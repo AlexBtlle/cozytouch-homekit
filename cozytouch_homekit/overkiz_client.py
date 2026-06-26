@@ -14,6 +14,7 @@ from pyoverkiz.client import OverkizClient
 from pyoverkiz.const import SUPPORTED_SERVERS
 from pyoverkiz.exceptions import (
     BadCredentialsException,
+    InvalidEventListenerIdException,
     MaintenanceException,
     NotAuthenticatedException,
     TooManyRequestsException,
@@ -44,6 +45,7 @@ class CozytouchClient:
         self._server = SUPPORTED_SERVERS[server]
         self._client: OverkizClient | None = None
         self._logged_in = False
+        self._listener_registered = False
 
     async def _ensure_client(self) -> OverkizClient:
         if self._client is None:
@@ -58,6 +60,7 @@ class CozytouchClient:
     async def login(self) -> None:
         """(Re)authentifie. Lève AuthError / TransientError."""
         client = await self._ensure_client()
+        self._listener_registered = False  # nouvelle session → listener à ré-enregistrer
         try:
             await client.login()
             self._logged_in = True
@@ -113,24 +116,33 @@ class CozytouchClient:
                 result[name] = getattr(state, "value", None)
         return result
 
-    async def refresh(self) -> None:
-        """Demande à la passerelle de rafraîchir ses states.
+    async def fetch_events(self) -> list[Any]:
+        """Enregistre un event listener (si besoin) et récupère les événements.
 
-        Sans ça, `get_state` renvoie la dernière valeur connue du cloud, qui peut
-        être périmée (la passerelle ne pousse pas toujours, surtout pour des
-        sondes peu bavardes comme la température extérieure).
+        C'est le mécanisme « live » d'Overkiz : tant qu'un listener est actif et
+        sondé régulièrement, la passerelle pousse les changements de states (sinon
+        `get_state` renvoie un cache figé). `refresh_states` ne marche pas sur le
+        serveur Atlantic (content-type rejeté), d'où cette approche.
         """
         client = await self._ensure_login()
         try:
-            await client.refresh_states()
+            if not self._listener_registered:
+                await client.register_event_listener()
+                self._listener_registered = True
+                _LOGGER.info("Event listener Overkiz enregistré.")
+            return await client.fetch_events()
+        except InvalidEventListenerIdException:
+            self._listener_registered = False
+            return []
         except NotAuthenticatedException:
             self._logged_in = False
+            self._listener_registered = False
             await self.login()
-            await client.refresh_states()
+            return []
         except (TooManyRequestsException, MaintenanceException) as exc:
-            raise TransientError(f"refresh_states throttlé : {exc}") from exc
+            raise TransientError(f"fetch_events throttlé : {exc}") from exc
         except Exception as exc:
-            raise TransientError(f"refresh_states échoué : {exc}") from exc
+            raise TransientError(f"fetch_events échoué : {exc}") from exc
 
     async def close(self) -> None:
         if self._client is not None:
@@ -140,3 +152,4 @@ class CozytouchClient:
                 pass
             self._client = None
             self._logged_in = False
+            self._listener_registered = False

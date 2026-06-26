@@ -200,6 +200,11 @@ class CozytouchBridge(Bridge):
         self._stopped = False
         self._run_task: asyncio.Task | None = None
         self._web: Any = None
+        # Cache des states (alimenté par un seed get_state + les événements live).
+        self._states: dict[str, dict[str, Any]] = {}
+        self._seeded = False
+        self._last_reseed = 0.0
+        self._reseed_interval = 120
         # État exposé à la page web de statut.
         self.connected = False
         self.last_poll_ok: Any = None
@@ -276,7 +281,10 @@ class CozytouchBridge(Bridge):
     async def run(self) -> None:
         cz = self._cfg["cozytouch"]
         poll = self._cfg["polling"]
-        interval = int(poll["interval"])
+        # `interval` = cadence de relecture complète (get_state) pour réconcilier.
+        # On sonde les événements live plus souvent pour garder le listener actif.
+        self._reseed_interval = int(poll["interval"])
+        event_interval = min(30, self._reseed_interval)
         backoff_base = int(poll["backoff_base"])
         backoff_max = int(poll["backoff_max"])
 
@@ -290,14 +298,14 @@ class CozytouchBridge(Bridge):
 
         while not self._stopped:
             try:
-                await self._poll_once()
+                await self._cycle()
                 self.connected = True
                 self.last_error = None
                 from datetime import datetime
 
                 self.last_poll_ok = datetime.now()
                 backoff = backoff_base
-                await self._sleep(interval)
+                await self._sleep(event_interval)
             except AuthError as exc:
                 _LOGGER.error("%s — corrigez `configure`. Pause prolongée.", exc)
                 self.connected = False
@@ -321,20 +329,43 @@ class CozytouchBridge(Bridge):
                 await self._sleep(backoff)
                 backoff = min(backoff_max, backoff * 2)
 
-    async def _poll_once(self) -> None:
+    async def _cycle(self) -> None:
+        """Un tour : événements live (+ enregistrement listener), seed initial et
+        réconciliation périodique. Les événements live sont appliqués APRÈS le
+        seed pour qu'ils l'emportent sur la relecture get_state."""
         assert self._client is not None
-        # Forcer la passerelle à rafraîchir avant de lire (sinon get_state peut
-        # renvoyer des valeurs périmées). Best-effort : si throttlé, on lit
-        # quand même le cache.
-        try:
-            await self._client.refresh()
-        except TransientError as exc:
-            _LOGGER.debug("refresh_states ignoré : %s", exc)
-        states_by_url: dict[str, dict[str, Any]] = {}
-        for url in self._device_urls:
-            states_by_url[url] = await self._client.read_states(url)
+        import time
+
+        now = time.monotonic()
+        need_seed = (not self._seeded) or (now - self._last_reseed >= self._reseed_interval)
+        events = await self._client.fetch_events()
+        if need_seed:
+            await self._seed()
+            self._seeded = True
+            self._last_reseed = now
+        self._apply_events(events)
         for comp in self._components:
-            comp.update(states_by_url)
+            comp.update(self._states)
+
+    async def _seed(self) -> None:
+        assert self._client is not None
+        for url in self._device_urls:
+            self._states[url] = await self._client.read_states(url)
+
+    def _apply_events(self, events: list[Any]) -> None:
+        for ev in events or []:
+            url = getattr(ev, "device_url", None)
+            device_states = getattr(ev, "device_states", None)
+            if not url or not device_states:
+                continue
+            cache = self._states.setdefault(url, {})
+            for st in device_states:
+                if isinstance(st, dict):
+                    name, value = st.get("name"), st.get("value")
+                else:
+                    name, value = getattr(st, "name", None), getattr(st, "value", None)
+                if name is not None:
+                    cache[name] = value
 
     def _mark_all_unavailable(self) -> None:
         for comp in self._components:
